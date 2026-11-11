@@ -136,6 +136,7 @@ Click `⌃` in the status bar. The window expands to `360×668` with two tabs.
 | **Model** | populated from `GET /image/models` (a small registry in `img-forge/models.json`) |
 | **reasoning / quality** | populated from that model's **OpenAPI schema**, so the dropdowns can only offer values the endpoint accepts; a model without the field hides it |
 | **Use selection / Add image…** | references for Edit: the selected frame (exported at 2×) or files from disk, as many as you drop; thumbnails with ✕ to drop one |
+| **Paint mask… / From selection** | constrain the edit to an area: paint over the reference with the brush (erase with `E`), or turn a white-on-black frame into a mask |
 | **Prompt** | text; for Edit this describes the change |
 | **Size chips** | `1:1 @1024`, `16:9 @2k`, `9:16 @1080`, saved presets, and — in Edit — a chip with the reference's exact dimensions |
 | **W × H + Use** | any size between 64 and 8192 px; the active chip becomes those pixels |
@@ -152,6 +153,12 @@ the job directory and passes one `--ref` per image to `img edit`, which uploads 
 The first reference's dimensions become the active size, so an edit keeps its proportions instead of
 being re-cropped to a fixed aspect. From the CLI it is the same thing without the panel:
 `img edit --prompt "…" --ref a.png --ref b.png` (also `--ref-url`, `--mask`, `--markup`).
+
+A **mask** narrows the edit to part of the image. fal's rule is blunt: **white = change, black =
+keep**, and the mask must be the size of the image. The panel paints it for you — *Paint mask…* opens
+the first reference with a brush (erase with `E`, *Clear*, *Use mask*) and sends the result at the
+reference's exact size, so nothing drifts. If you would rather build the mask in Figma, paint the area
+white on a black frame and use *From selection*; the panel thresholds it to pure black and white.
 
 ### Cost and limits
 

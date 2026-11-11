@@ -85,6 +85,9 @@ Image generation (optional; needs a `FAL_KEY` and the sibling CLI,
 - `POST /image/jobs` with `mode: "edit"` takes `refs: [{filename, base64}, …]` — any number; the server
   writes each to the job dir and passes one `--ref` per image. In the panel: **Edit → Use selection**
   (exports the selected frame at 2×) or **Add image…** (files from disk, several at once)
+- optional `mask: {filename, base64}` — a PNG the size of the reference where **white = change, black =
+  keep** (fal's `mask_url` semantics; the CLI flag is `--mask`, plus `--markup`). The panel paints it
+  over the first reference (**Paint mask…**, brush/erase, clear) and sends it at reference size.
 - no token; requests carrying a foreign `Origin` get 403, and each job is capped by `--max-usd`
 - a job spawns `img-forge` and returns `{status, log, result:{file, base64, width, height}}`
 - if you can run the CLI directly, do that instead — the endpoint exists for the Figma panel,
@@ -247,6 +250,7 @@ figma-bridge/
   scripts/test-typography.mjs ← unit test: text/update/applyStyle against a fake Figma API
   scripts/test-serialisation.mjs ← one batch per window, parallel windows
   scripts/test-agents.mjs ← agent registry: two agents, busy, mint, rename, forget
+  scripts/test-image-job.mjs ← dry-run edit job: two refs + mask reach the payload
   scripts/demo-build.sh / make-demo-gif.py ← reproduce the demo GIF
   out/                 ← exports (gitignored)
 ```

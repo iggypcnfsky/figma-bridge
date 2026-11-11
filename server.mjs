@@ -129,7 +129,11 @@ const AGENT_ID_RE = /^[a-z0-9][a-z0-9._:@-]{0,47}$/i
 let agentCounter = 0
 
 function agentLabel(id) {
-  if (id.startsWith('dsh:')) return 'DSH ' + id.slice(4, 10)
+  if (id.startsWith('dsh:')) {
+    // dsh:session-<uuid> → "DSH <uuid6>": the session prefix says nothing, the id does
+    const rest = id.slice(4).replace(/^session-/, '')
+    return 'DSH ' + rest.slice(0, 6)
+  }
   return id
 }
 
@@ -378,7 +382,15 @@ function enqueueImageJob(body) {
     refPaths.push(file)
   }
 
-  const args = imageArgs(body, refPaths)
+  // Maska: panel wysyła gotowy PNG (białe = edytuj, czarne = zostaw), albo ścieżkę (CLI/agent).
+  let maskPath = typeof body.mask === 'string' ? body.mask : null
+  if (body.mask && typeof body.mask === 'object') {
+    if (!body.mask.base64) throw new Error('mask needs {filename, base64}')
+    maskPath = join(dir, 'mask.png')
+    writeFileSync(maskPath, Buffer.from(String(body.mask.base64), 'base64'))
+  }
+
+  const args = imageArgs(Object.assign({}, body, maskPath ? { mask: maskPath } : {}), refPaths)
   const job = { id, dir, body, args, status: 'queued', log: [], createdAt: Date.now(), result: null, error: null }
   imageJobs.set(id, job)
   imageQueue.push(job)

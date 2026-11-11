@@ -60,6 +60,11 @@
       .ref button { position: absolute; top: 0; right: 0; padding: 0 3px; font-size: 9px; line-height: 12px;
         border-radius: 0 0 0 4px; background: rgba(0,0,0,.6); color: #fff; border: 0; }
       .ref button:hover { background: rgba(0,0,0,.85); }
+      #maskCanvas { width: 100%; border-radius: 5px; border: 1px solid var(--figma-color-border, #ddd);
+        touch-action: none; cursor: crosshair; display: block; background: #000; }
+      #maskRow #maskInfo { font-size: 10px; opacity: .75; }
+      #brushSize { width: 90px; }
+      #maskErase.on { border-color: var(--figma-color-border-brand, #0d99ff); color: var(--figma-color-text-brand, #0d99ff); }
       button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
       button svg { width: 12px; height: 12px; flex: 0 0 auto; }
       .check { flex-direction: row; align-items: center; gap: 5px; font-size: 10px; opacity: .85; }
@@ -118,6 +123,23 @@
         </div>
         <div id="refList" class="refs"></div>
         <input id="refFile" type="file" accept="image/*" multiple class="hidden" />
+        <div class="row" id="maskRow">
+          <button id="paintMask" title="Paint the area to change">Paint mask…</button>
+          <button id="maskFromSel" title="Use a black/white frame as the mask">From selection</button>
+          <span id="maskInfo">no mask</span>
+        </div>
+        <div id="maskEditor" class="hidden">
+          <div class="row">
+            <input id="brushSize" type="range" min="4" max="120" value="32" />
+            <button id="maskErase" title="Erase (E)">Erase</button>
+            <button id="maskClear" title="Clear the mask">Clear</button>
+          </div>
+          <canvas id="maskCanvas"></canvas>
+          <div class="row">
+            <button id="maskSave">Use mask</button>
+            <button id="maskCancel">Cancel</button>
+          </div>
+        </div>
       </div>
 
       <label>Model
@@ -194,6 +216,10 @@
         custom: { width: 1024, height: 1024 },
         presets: [],
         refs: [],
+        mask: null,
+        maskPainting: false,
+        maskFromSelection: false,
+        maskBase: null,
         agents: [],
         windows: [],
         agentCmd: '',
@@ -272,6 +298,12 @@
         if (msg.type === 'selectionImage') {
           if (msg.error) {
             log('reference: ' + msg.error)
+            state.maskFromSelection = false
+            return
+          }
+          if (state.maskFromSelection) {
+            state.maskFromSelection = false
+            maskFromBase64(msg.base64).catch((err) => log('mask: ' + err.message))
             return
           }
           addRef({ filename: 'selection.png', base64: msg.base64, width: msg.width, height: msg.height, source: 'selection' }, true)
@@ -374,6 +406,14 @@
       function addRef(ref, replaceSameSource) {
         if (replaceSameSource) state.refs = state.refs.filter((entry) => entry.source !== ref.source)
         state.refs.push(ref)
+        // maska jest w pikselach referencji — inny rozmiar znaczy „narysuj ją jeszcze raz”
+        if (state.mask) {
+          const primary = primaryRef()
+          if (primary && (primary.width !== state.mask.width || primary.height !== state.mask.height)) {
+            setMask(null)
+            log('mask cleared — the reference changed size')
+          }
+        }
         renderRefs()
         updateCost()
       }
@@ -405,6 +445,144 @@
         })
         const count = state.refs.length
         $('refInfo').textContent = count === 0 ? 'no reference' : count + (count === 1 ? ' reference' : ' references')
+      }
+
+      // ------------------------------------------------------------------ maska
+      // Maską rządzi fal: BIAŁE = obszar do zmiany, CZARNE = zostaw. Panel maluje po referencji
+      // i wysyła gotowy PNG w tych wymiarach, więc obraz i maska zawsze do siebie pasują.
+      const loadImage = (src) => new Promise((resolve, reject) => {
+        const image = new Image()
+        image.onload = () => resolve(image)
+        image.onerror = () => reject(new Error('cannot load image'))
+        image.src = src
+      })
+
+      function setMask(mask) {
+        state.mask = mask || null
+        $('maskInfo').textContent = state.mask
+          ? 'mask ' + state.mask.width + '×' + state.mask.height
+          : 'no mask'
+      }
+
+      async function openMaskEditor() {
+        const ref = primaryRef()
+        if (!ref) return log('add a reference first — the mask is painted over it')
+        const image = await loadImage('data:image/png;base64,' + ref.base64)
+        const canvas = $('maskCanvas')
+        const maxW = 328
+        const maxH = 250
+        const scale = Math.min(maxW / (ref.width || image.naturalWidth), maxH / (ref.height || image.naturalHeight), 1)
+        canvas.width = Math.max(32, Math.round((ref.width || image.naturalWidth) * scale))
+        canvas.height = Math.max(32, Math.round((ref.height || image.naturalHeight) * scale))
+        const overlay = document.createElement('canvas')
+        overlay.width = canvas.width
+        overlay.height = canvas.height
+        state.maskBase = { image, canvas, overlay }
+        state.maskErase = false
+        $('maskErase').classList.remove('on')
+        $('maskEditor').classList.remove('hidden')
+        redrawMask()
+      }
+
+      function redrawMask() {
+        const base = state.maskBase
+        if (!base) return
+        const ctx = base.canvas.getContext('2d')
+        ctx.clearRect(0, 0, base.canvas.width, base.canvas.height)
+        ctx.drawImage(base.image, 0, 0, base.canvas.width, base.canvas.height)
+        ctx.globalAlpha = 0.55
+        ctx.drawImage(base.overlay, 0, 0)
+        ctx.globalAlpha = 1
+      }
+
+      function paintMaskAt(event) {
+        const base = state.maskBase
+        if (!base) return
+        const rect = base.canvas.getBoundingClientRect()
+        const x = ((event.clientX - rect.left) / rect.width) * base.canvas.width
+        const y = ((event.clientY - rect.top) / rect.height) * base.canvas.height
+        const radius = (Number($('brushSize').value) / 2) * (base.canvas.width / rect.width)
+        const ctx = base.overlay.getContext('2d')
+        ctx.globalCompositeOperation = state.maskErase ? 'destination-out' : 'source-over'
+        ctx.fillStyle = '#ff00ff'
+        ctx.beginPath()
+        ctx.arc(x, y, Math.max(1, radius), 0, Math.PI * 2)
+        ctx.fill()
+        redrawMask()
+      }
+
+      function closeMaskEditor() {
+        state.maskBase = null
+        $('maskEditor').classList.add('hidden')
+      }
+
+      function saveMask() {
+        const base = state.maskBase
+        const ref = primaryRef()
+        if (!base || !ref) return
+        const source = base.overlay
+        const pixels = source.getContext('2d').getImageData(0, 0, source.width, source.height).data
+        // biały/czarny w rozmiarze podglądu…
+        const binary = document.createElement('canvas')
+        binary.width = source.width
+        binary.height = source.height
+        const bctx = binary.getContext('2d')
+        const out = bctx.createImageData(binary.width, binary.height)
+        let painted = 0
+        for (let i = 0; i < pixels.length; i += 4) {
+          const on = pixels[i + 3] > 40
+          if (on) painted += 1
+          out.data[i] = out.data[i + 1] = out.data[i + 2] = on ? 255 : 0
+          out.data[i + 3] = 255
+        }
+        if (painted === 0) return log('mask is empty — paint the area to change')
+        bctx.putImageData(out, 0, 0)
+        // …i przeskalowany do wymiarów referencji, bo fal porównuje maskę z obrazem
+        const full = document.createElement('canvas')
+        full.width = Math.round(ref.width || binary.width)
+        full.height = Math.round(ref.height || binary.height)
+        const fctx = full.getContext('2d')
+        fctx.imageSmoothingEnabled = false
+        fctx.drawImage(binary, 0, 0, full.width, full.height)
+        setMask({
+          filename: 'mask.png',
+          base64: full.toDataURL('image/png').split(',')[1],
+          width: full.width,
+          height: full.height,
+        })
+        closeMaskEditor()
+        log('mask: ' + Math.round((painted / (binary.width * binary.height)) * 100) + '% of the area will change')
+      }
+
+      // alternatywa: frame pomalowany na biało/czarno (albo dowolny kontrast) jako maska
+      async function maskFromBase64(base64) {
+        const image = await loadImage('data:image/png;base64,' + base64)
+        const canvas = document.createElement('canvas')
+        canvas.width = image.naturalWidth
+        canvas.height = image.naturalHeight
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(image, 0, 0)
+        const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        let white = 0
+        for (let i = 0; i < pixels.data.length; i += 4) {
+          const luminance = 0.299 * pixels.data[i] + 0.587 * pixels.data[i + 1] + 0.114 * pixels.data[i + 2]
+          const on = pixels.data[i + 3] > 40 && luminance >= 128
+          if (on) white += 1
+          pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = on ? 255 : 0
+          pixels.data[i + 3] = 255
+        }
+        ctx.putImageData(pixels, 0, 0)
+        const ratio = white / (canvas.width * canvas.height)
+        if (ratio === 0 || ratio === 1) {
+          return log('that selection is all ' + (ratio === 1 ? 'light' : 'dark') + ' — mask needs a white shape on black')
+        }
+        setMask({
+          filename: 'mask.png',
+          base64: canvas.toDataURL('image/png').split(',')[1],
+          width: canvas.width,
+          height: canvas.height,
+        })
+        log('mask from selection: ' + Math.round(ratio * 100) + '% white (edit)')
       }
 
       function dimsFromPreset(preset) {
@@ -691,6 +869,9 @@
           if (state.mode === 'edit' && state.refs.length > 0) {
             payload.refs = state.refs.map((ref) => ({ filename: ref.filename, base64: ref.base64 }))
           }
+          if (state.mode === 'edit' && state.mask) {
+            payload.mask = { filename: 'mask.png', base64: state.mask.base64 }
+          }
           const job = await api('/image/jobs', { method: 'POST', body: JSON.stringify(payload) })
           log('job ' + job.id.slice(0, 8))
           for (;;) {
@@ -787,6 +968,41 @@
 
       $('addRef').innerHTML = ICONS.image + '<span>Add image</span>'
       $('addRef').onclick = () => $('refFile').click()
+
+      $('paintMask').onclick = () => openMaskEditor().catch((err) => log('mask: ' + err.message))
+      $('maskFromSel').onclick = () => {
+        state.maskFromSelection = true
+        toPlugin({ type: 'exportSelection' })
+        log('exporting the selection as a mask…')
+      }
+      $('maskErase').onclick = () => {
+        state.maskErase = !state.maskErase
+        $('maskErase').classList.toggle('on', state.maskErase)
+      }
+      $('maskClear').onclick = () => {
+        if (!state.maskBase) return
+        const ctx = state.maskBase.overlay.getContext('2d')
+        ctx.clearRect(0, 0, state.maskBase.overlay.width, state.maskBase.overlay.height)
+        redrawMask()
+      }
+      $('maskSave').onclick = () => saveMask()
+      $('maskCancel').onclick = () => closeMaskEditor()
+      const maskCanvas = $('maskCanvas')
+      const stopPainting = () => { state.maskPainting = false }
+      maskCanvas.onpointerdown = (event) => {
+        state.maskPainting = true
+        maskCanvas.setPointerCapture(event.pointerId)
+        paintMaskAt(event)
+      }
+      maskCanvas.onpointermove = (event) => {
+        if (state.maskPainting) paintMaskAt(event)
+      }
+      maskCanvas.onpointerup = stopPainting
+      maskCanvas.onpointercancel = stopPainting
+      maskCanvas.onpointerleave = stopPainting
+      window.addEventListener('keydown', (event) => {
+        if (event.key.toLowerCase() === 'e' && state.maskBase) $('maskErase').click()
+      })
 
       // Plik z dysku: tyle referencji, ile chcesz. Bez tego jedyną referencją była selekcja.
       $('refFile').onchange = async (event) => {

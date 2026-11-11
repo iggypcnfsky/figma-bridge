@@ -89,6 +89,9 @@ Design-work shortcuts worth knowing:
   frame at 2×) or **Add image…** (any number of files; thumbnails, ✕ to drop one). Over HTTP that is
   `{"mode":"edit","refs":[{"filename","base64"}…],"prompt":…}` on `/image/jobs`, and from a terminal
   `img edit --ref a.png --ref b.png` (repeatable, plus `--ref-url`, `--mask`, `--markup`).
+- **masks**: `mask: {filename, base64}` next to `refs`, or `--mask file` in the CLI. fal expects
+  **white = the area to change, black = keep**, at the reference's size; the panel paints it
+  (**Paint mask…**) or thresholds a white-on-black frame (**From selection**).
 - **styles**: `saveStyle` creates or updates a `text` / `paint` / `effect` / `grid` style by name, and
   `applyStyle` applies it. Create the token once, apply it everywhere.
 - **changing type on existing text** is the `text` op — not `exec`, and not loose assignments:
