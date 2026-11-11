@@ -52,6 +52,15 @@
       #log { font-size: 10px; opacity: .75; max-height: 46px; overflow: auto; white-space: pre-wrap; }
       #preview { width: 100%; border-radius: 6px; border: 1px solid var(--figma-color-border, #ddd); background: #000; }
       #refInfo { font-size: 10px; opacity: .75; }
+      button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+      button svg { width: 12px; height: 12px; flex: 0 0 auto; }
+      .check { flex-direction: row; align-items: center; gap: 5px; font-size: 10px; opacity: .85; }
+      .check input { width: auto; margin: 0; }
+      .logbox { border: 1px solid var(--figma-color-border, #ddd); border-radius: 5px; }
+      .loghead { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px 2px 6px; border-bottom: 1px solid var(--figma-color-border, #ddd); }
+      .loghead button { padding: 1px 5px; font-size: 9px; gap: 3px; }
+      .loghead button svg { width: 9px; height: 9px; }
+      #log { padding: 4px 6px; }
     </style>
   </head>
   <body>
@@ -86,8 +95,14 @@
       </div>
 
       <div id="cost"></div>
+      <label class="check">
+        <input type="checkbox" id="autoInsert" checked /> auto-insert on canvas when done
+      </label>
       <button id="go">Generate</button>
-      <div id="log"></div>
+      <div class="logbox">
+        <div class="loghead"><span>log</span><button id="copyLog" title="Copy log to clipboard">Copy</button></div>
+        <div id="log"></div>
+      </div>
 
       <div id="result" class="hidden">
         <img id="preview" alt="result" />
@@ -103,7 +118,7 @@
       const BASE = 'http://localhost:3847'
       const BASE_PRESETS = ['1:1@1024', '16:9@2k', '9:16@1080']
       const COLLAPSED = { width: 232, height: 34 }
-      const EXPANDED = { width: 360, height: 604 }
+      const EXPANDED = { width: 360, height: 668 }
 
       const $ = (id) => document.getElementById(id)
       const dot = $('dot')
@@ -115,8 +130,18 @@
         preset: '1:1@1024',
         ref: null,
         result: null,
+        autoInsert: true,
         expanded: false,
         busy: false,
+      }
+
+      const ICONS = {
+        chevron: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7.5 6 4.5l3 3"/></svg>',
+        cursor: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 2l3.2 8 1.3-3.1L9.6 5.6 2 2z"/></svg>',
+        spark: '<svg viewBox="0 0 12 12" fill="currentColor"><path d="M6 1l1.1 2.9L10 5l-2.9 1.1L6 9 4.9 6.1 2 5l2.9-1.1L6 1z"/></svg>',
+        image: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2" width="9" height="8" rx="1.2"/><circle cx="4.2" cy="4.8" r="1"/><path d="M2 9l3-3 2 2 1.5-1.5L10.5 9"/></svg>',
+        droplet: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6 1.5S2.8 5 2.8 7.2A3.2 3.2 0 0 0 6 10.4a3.2 3.2 0 0 0 3.2-3.2C9.2 5 6 1.5 6 1.5z"/></svg>',
+        copy: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4" y="4" width="6" height="6" rx="1"/><path d="M8 4V2.5A.5.5 0 0 0 7.5 2h-5a.5.5 0 0 0-.5.5v5c0 .3.2.5.5.5H4"/></svg>',
       }
 
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -314,7 +339,7 @@
           button.classList.toggle('on', button.dataset.tab === mode)
         }
         $('refRow').classList.toggle('hidden', mode !== 'edit')
-        $('go').textContent = mode === 'edit' ? 'Edit image' : 'Generate'
+        $('go').innerHTML = ICONS.spark + '<span>' + (mode === 'edit' ? 'Edit image' : 'Generate') + '</span>'
         const models = Object.entries(state.models)
         const wanted = Object.keys(state.models).find((id) => (mode === 'edit' ? /\/edit$/.test(id) : !/\/edit$/.test(id)))
         if (wanted) $('model').value = wanted
@@ -375,6 +400,15 @@
               }
               log('done · ' + (info.result && info.result.cost ? '$' + info.result.cost : 'cost not recorded'))
               setStatus('ready', 'ok')
+              if (state.autoInsert && info.result && info.result.base64) {
+                toPlugin({
+                  type: 'insertImage',
+                  base64: info.result.base64,
+                  width: info.result.width || 1024,
+                  height: info.result.height || 1024,
+                })
+                log('auto-inserted on canvas')
+              }
               break
             }
             if (info.status === 'error') throw new Error(info.error || 'job failed')
@@ -392,7 +426,7 @@
       $('toggle').onclick = () => {
         state.expanded = !state.expanded
         $('panel').classList.toggle('hidden', !state.expanded)
-        $('toggle').textContent = state.expanded ? '⌄' : '⌃'
+        $('toggle').style.transform = state.expanded ? 'rotate(180deg)' : 'none'
         const size = state.expanded ? EXPANDED : COLLAPSED
         toPlugin({ type: 'resize', width: size.width, height: size.height })
         if (state.expanded) {
@@ -434,6 +468,38 @@
 
       // ------------------------------------------------------------------ start
       renderChips()
+      $('go').innerHTML = ICONS.spark + '<span>Generate</span>'
+
+      $('copyLog').innerHTML = ICONS.copy + '<span>Copy</span>'
+      $('copyLog').onclick = async () => {
+        const text = $('log').textContent.trim()
+        if (!text) return log('log is empty')
+        try {
+          await navigator.clipboard.writeText(text)
+        } catch {
+          // iframe bez uprawnień do clipboard API — fallback na execCommand
+          const area = document.createElement('textarea')
+          area.value = text
+          document.body.appendChild(area)
+          area.select()
+          document.execCommand('copy')
+          area.remove()
+        }
+        const button = $('copyLog')
+        button.innerHTML = ICONS.copy + '<span>Copied</span>'
+        setTimeout(() => { button.innerHTML = ICONS.copy + '<span>Copy</span>' }, 1200)
+      }
+
+      $('autoInsert').checked = state.autoInsert
+      $('autoInsert').onchange = (event) => {
+        state.autoInsert = event.target.checked
+        log('auto-insert ' + (state.autoInsert ? 'on' : 'off'))
+      }
+
+      $('useSel').innerHTML = ICONS.cursor + '<span>Use selection</span>'
+      $('insert').innerHTML = ICONS.image + '<span>Insert</span>'
+      $('fill').innerHTML = ICONS.droplet + '<span>Fill</span>'
+      $('toggle').innerHTML = ICONS.chevron
 
       toPlugin({ type: 'resize', width: COLLAPSED.width, height: COLLAPSED.height })
       bridgeLoop()

@@ -99,8 +99,10 @@ Generate / Edit. Model, `reasoning` and `quality` come from the model's OpenAPI 
 chips (`1:1@1k`, `16:9@2k`, `9:16@1080`), and the cost estimate is shown before you spend anything.
 
 - **Insert on canvas** drops the image as a plain rectangle with an image fill at the viewport centre —
-  a picture on the canvas, not nested inside a frame.
+  a picture on the canvas, not nested inside a frame. It runs **automatically** when a generation
+  finishes; untick `auto-insert` to place it by hand.
 - **Fill selection** applies it as a fill to whatever is selected.
+- **Copy** in the log header puts the whole run log on the clipboard — handy when reporting a failure.
 - **Edit** uses the current selection as the reference (`exportAsync` → server → `img edit`); picking a
   reference adds a preset chip with its exact dimensions and selects it, so the result keeps the
   reference's size instead of re-cropping it to a fixed aspect.
