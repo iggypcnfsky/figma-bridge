@@ -87,19 +87,21 @@ Design-work shortcuts worth knowing:
 - **spacing checks**: `{"op":"measure","a":"1:2","b":"1:3"}` returns gaps per side and centre distance;
   use it instead of exporting a screenshot to judge alignment.
 - **image references for editing**: the panel's Edit tab takes **Use selection** (exports the selected
-  frame at 2×) or **Add image…** (any number of files; thumbnails, ✕ to drop one). Over HTTP that is
+  frame at 2×) or **Add image…** (any number of files; 100 px thumbnails with the file name under
+  each one, ✕ to drop one). Over HTTP that is
   `{"mode":"edit","refs":[{"filename","base64"}…],"prompt":…}` on `/image/jobs`, and from a terminal
   `img edit --ref a.png --ref b.png` (repeatable, plus `--ref-url`, `--mask`, `--markup`).
 - **masks**: `mask: {filename, base64}` next to `refs`, or `--mask file` in the CLI. fal expects
   **white = the area to change, black = keep**, at the reference's size; the panel paints it
   (**Paint mask…**, brush/erase, `+` for another). Several masks = several
   passes, each on the previous result and with its own instruction; N masks cost N calls.
-  References are numbered (`#image1`, `#image2` — badges sit on the thumbnails) and the panel expands
+  References are numbered (`#image1`, `#image2` — badges on the thumbnails, file names under them) and the panel expands
   those into "reference image N (filename)" before sending.
 - **several masks = one call**: masks are OR-ed into one white `mask_url`, and a colour-tinted copy of
   the reference is appended as the last image together with a legend naming each colour and its
   instruction. Colours never enter `mask_url` (fal reads only white/black); they are how the prompt
-  points at regions. References are numbered (`#image1`, `#image2` — badges on the thumbnails) and the
+  points at regions. References are numbered (`#image1`, `#image2` — badges and file names on the
+  thumbnails) and the
   panel expands those into "reference image N (filename)".
 - **styles**: `saveStyle` creates or updates a `text` / `paint` / `effect` / `grid` style by name, and
   `applyStyle` applies it. Create the token once, apply it everywhere.

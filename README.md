@@ -136,7 +136,7 @@ Click `⌃` in the status bar. The window expands to `360×668` with two tabs.
 |---|---|
 | **Model** | populated from `GET /image/models` (a small registry in `img-forge/models.json`) |
 | **reasoning / quality** | populated from that model's **OpenAPI schema**, so the dropdowns can only offer values the endpoint accepts; a model without the field hides it |
-| **Use selection / Add selection / Add image…** | references for Edit: *Use selection* makes the selected frame the base (exported at 2×, sets the output size), *Add selection* appends another canvas selection as `#image2`, `#image3`…, *Add image…* takes files from disk; thumbnails with ✕ to drop one |
+| **Use selection / Add selection / Add image…** | references for Edit: *Use selection* makes the selected frame the base (exported at 2×, sets the output size), *Add selection* appends another canvas selection as `#image2`, `#image3`…, *Add image…* takes files from disk; 100 px thumbnails with the file name underneath, ✕ to drop one |
 | **Paint mask…** | constrain the edit to an area: paint over the reference with the brush (erase with `E`), name the mask, `+` starts another in a new colour |
 | **Corner grips** | any of the four corners drags the window (double-click resets); the preview and the mask canvas grow with it, and the size is remembered |
 | **Prompt** | text; for Edit this describes the change |
@@ -212,7 +212,8 @@ composed prompt is echoed into the panel log (`prompt · …`), so you can see t
 spending anything.
 
 **References are numbered.** The first thumbnail is `#image1`, the second `#image2`, and the numbers
-are drawn on the thumbnails. Write `#image2` in any instruction and the panel expands it to
+are drawn on the thumbnails with the file name right under each one — so you can tell which file is
+which before writing a prompt. Write `#image2` in any instruction and the panel expands it to
 `reference image 2 (filename.png)` before sending — the model reads that, the API only sees order.
 
 ### Cost and limits

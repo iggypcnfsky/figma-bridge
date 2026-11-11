@@ -85,9 +85,10 @@
       .job .jmeta { font-size: 9px; opacity: .6; white-space: nowrap; }
       #modeHint button { padding: 1px 5px; font-size: 10px; margin-left: 4px; }
       #refRow .row { flex-wrap: wrap; }
-      .refs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+      .refs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
       .refs:empty { display: none; }
-      .ref { position: relative; width: 68px; height: 68px; border-radius: 6px; overflow: hidden;
+      .ref { width: 100px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .ref .thumb { position: relative; width: 100px; height: 100px; border-radius: 6px; overflow: hidden;
         border: 1px solid var(--figma-color-border, #ddd); background: #000; }
       .ref img { width: 100%; height: 100%; object-fit: cover; display: block; }
       .ref button { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; padding: 0;
@@ -96,6 +97,9 @@
       .ref button:hover { background: #cf222e; border-color: #cf222e; }
       .refnum { position: absolute; left: 0; bottom: 0; font-size: 10px; line-height: 15px; padding: 0 5px;
         background: rgba(0,0,0,.72); color: #fff; border-radius: 0 5px 0 0; pointer-events: none; font-weight: 600; }
+      .refname { width: 100px; font-size: 10px; line-height: 13px; text-align: center; opacity: .8;
+        overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+        word-break: break-all; }
       #maskCanvas { max-width: 100%; border-radius: 5px; border: 1px solid var(--figma-color-border, #ddd);
         touch-action: none; cursor: crosshair; display: block; background: #000; margin: 0 auto; }
       #maskRow #maskInfo { font-size: 10px; opacity: .75; }
@@ -523,7 +527,9 @@
         state.refs.forEach((ref, index) => {
           const box = document.createElement('div')
           box.className = 'ref'
-          box.title = ref.filename + ' · ' + ref.width + '×' + ref.height
+          box.title = '#image' + (index + 1) + ' · ' + ref.filename + ' · ' + ref.width + '×' + ref.height
+          const thumb = document.createElement('div')
+          thumb.className = 'thumb'
           const img = document.createElement('img')
           img.src = 'data:image/png;base64,' + ref.base64
           img.alt = ref.filename
@@ -535,8 +541,12 @@
           const badge = document.createElement('span')
           badge.className = 'refnum'
           badge.textContent = String(index + 1)
-          box.title = '#image' + (index + 1) + ' · ' + ref.filename + ' · ' + ref.width + '×' + ref.height
-          box.append(img, remove, badge)
+          thumb.append(img, remove, badge)
+          // podpis = dokładnie ta nazwa, którą panel wpisuje do promptu przy #imageN
+          const name = document.createElement('div')
+          name.className = 'refname'
+          name.textContent = ref.filename
+          box.append(thumb, name)
           list.append(box)
         })
         const count = state.refs.length
