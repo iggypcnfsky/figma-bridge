@@ -7,8 +7,8 @@ executes them through the Figma Plugin API and returns the results. No dependenc
 no cloud.
 
 On top of that, the same plugin window is an **image panel** backed by
-[img-forge](../img-forge): generate or edit images with fal.ai models and drop them straight onto
-the canvas.
+`img-forge` (a sibling checkout, not yet published): generate or edit images with fal.ai models and
+drop them straight onto the canvas.
 
 **For agents:** [`AGENTS.md`](AGENTS.md) is written to be loaded as context.
 **Drop-in prompt for another agent:** [`docs/handoff-prompt.md`](docs/handoff-prompt.md).
