@@ -185,7 +185,7 @@
         <select id="model"></select>
       </label>
 
-      <textarea id="prompt" placeholder="Describe the image…"></textarea>
+      <textarea id="prompt" placeholder="Describe the change — point at pictures and masks: #image2, #mask1"></textarea>
 
       <div class="chips" id="presets"></div>
 
@@ -920,24 +920,16 @@
       }
 
       // Prompt i instrukcje masek skleja jedno miejsce — dzięki temu wiadomo, co dokładnie leci.
-      function composePrompt(prompt, masks, combined) {
-        const main = String(prompt || '').trim()
+      // Prompt jest jedynym nosnikiem instrukcji - maska tylko ogranicza obszar.
+      function composePrompt(prompt, masks) {
+        const main = expandMasks(expandRefs(String(prompt || '').trim()))
         if (masks.length === 0) return main
-        if (!combined) {
-          const instruction = (masks[0].instruction || '').trim()
-          if (!instruction) return main
-          return main + '\n\nChange only the masked area: ' + expandRefs(instruction) +
-            ' Keep everything outside it untouched.'
+        if (masks.length === 1) {
+          return main + '\n\nThe attached mask marks the only area that may change (' +
+            '"' + masks[0].name + '" in ' + masks[0].color + ').'
         }
-        return main + '\n\n' + legendFor(masks)
-      }
-
-      function legendFor(masks) {
-        const parts = masks.map((mask) => {
-          const instruction = expandRefs((mask.instruction || '').trim())
-          return '"' + mask.name + '" marked in ' + mask.color + (instruction ? ' — ' + instruction : '')
-        })
-        return 'The last attached image is a colour map of the areas to change: ' + parts.join('; ') +
+        const legend = masks.map((mask) => '"' + mask.name + '" in ' + mask.color).join('; ')
+        return main + '\n\nThe last attached image is a colour map of the masked areas: ' + legend +
           '. Change only the marked areas, keep everything else untouched.'
       }
 
@@ -987,6 +979,19 @@
           mask: { filename: 'mask-union.png', base64: union.toDataURL('image/png').split(',')[1], width, height },
           colorMap: { filename: 'color-map.png', base64: colorMap.toDataURL('image/png').split(',')[1] },
         }
+      }
+
+      // #mask2 -> '"mask 2" (marked #00b3ff)': maski maja nazwy i kolory, wiec wskazujesz je
+      // w promptcie tak samo jak obrazy.
+      function expandMasks(text) {
+        return String(text || '').replace(/#mask\s*(\d+)/gi, (whole, digits) => {
+          const mask = state.masks[Number(digits) - 1]
+          if (!mask) {
+            log('#mask' + digits + ' does not exist - there are ' + state.masks.length + ' mask(s)')
+            return whole
+          }
+          return '"' + mask.name + '" (marked ' + mask.color + ')'
+        })
       }
 
       function dimsFromPreset(preset) {
@@ -1291,8 +1296,7 @@
             log('queued')
           }
 
-          const passPrompt = composePrompt(prompt, masks, masks.length > 1)
-          const expanded = expandRefs(passPrompt)
+          const expanded = composePrompt(prompt, masks)
           log('prompt · ' + expanded.replace(/\s+/g, ' ').slice(0, 140) + (expanded.length > 140 ? '…' : ''))
 
           const base = primaryRef()
