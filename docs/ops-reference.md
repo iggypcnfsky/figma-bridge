@@ -36,8 +36,15 @@ No parameters. Returns an array of `{ id, name, type }` for every page.
 | `depth` | `2` | how many levels of children to descend |
 | `maxChildren` | `40` | children cap per node |
 
-Returns `{ count, nodes: [summary…] }`. `summary` = `id, name, type, x, y, width, height, visible,
-characters (TEXT only), layoutMode/itemSpacing, fills (hex or paint type), children[]`.
+Returns `{ count, nodes: [summary…] }`.
+
+`summary` for every node: `id, name, type, x, y, width, height, visible, fills` (hex or paint type),
+`layoutMode`/`itemSpacing` when the node is auto-layout, and `children[]` up to `maxChildren`.
+
+For `TEXT` nodes it adds: `characters` (first 160), `font {family, style}`, `fontFamily`, `fontSize`,
+`lineHeight {value, unit}`, `letterSpacing {value, unit}`, `textAlignHorizontal`, `textAlignVertical`,
+`textAutoResize`. Mixed values (a text node with several styles) are the string `"MIXED"` — never
+assume a property exists on every node, and never index a field the reference does not list.
 
 ## node
 
@@ -47,7 +54,7 @@ characters (TEXT only), layoutMode/itemSpacing, fills (hex or paint type), child
 | `depth` | `2` | depth |
 | `maxChildren` | `40` | children cap |
 
-Returns a `summary` as above.
+Returns a `summary` as above, including the `TEXT` typography fields.
 
 ## find
 

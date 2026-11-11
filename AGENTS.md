@@ -129,6 +129,10 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
   has nothing to bind. Check `variables` first.
 - **Text needs a font.** `createText` calls `loadFontAsync` itself; if the family is neither in the
   file nor installed locally, the operation fails on the font — use `Inter` as a safe default.
+- **Read the documented fields, do not assume them.** A script that indexes `result['lh']` or any
+  field the reference does not list fails with `KeyError` — that is the script's bug, not the bridge's.
+  `node`/`selection` expose `font`, `fontSize`, `lineHeight`, `letterSpacing` for TEXT nodes; anything
+  else (effects, constraints, component properties) needs `exec` with the real Plugin API name.
 - **Positions are relative to the parent.** A node without `parentId` lands on the **current page**,
   and `x`/`y` are in the parent's coordinate space.
 - **`export` caps at 8 MB** — lower `scale` instead of retrying.

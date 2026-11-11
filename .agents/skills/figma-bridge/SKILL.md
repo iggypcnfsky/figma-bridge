@@ -91,6 +91,9 @@ Presets saved in that panel live in `figma-bridge/presets.json`.
 - `figma.currentPage` is the page open in that Figma window — not a saved pointer. Switching tabs
   changes what you see on the next call.
 - Positions are relative to the parent, and an omitted `parentId` means the **current page**.
+- Never index a field the reference does not list. `summary` carries `font`, `fontSize`, `lineHeight`
+  and `letterSpacing` for TEXT; everything else comes from `exec` with the real API name. Mixed styles
+  are the string `"MIXED"`, so guard with `.get()` and fallbacks.
 - A rectangle cannot have children; use a frame when text or icons must sit inside a shape.
 - No local variables → `variables` returns `collections: []` and `varFill` fails. Check first.
 - Text needs a font: `createText` loads it via `loadFontAsync`; if the family is missing, use `Inter`.

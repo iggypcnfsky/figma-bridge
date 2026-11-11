@@ -106,6 +106,24 @@ async function attach(node, parentId, index) {
   return node
 }
 
+/** Tekst bywa mieszany (figma.mixed) — zamiast wywalać się, zwracamy "MIXED". */
+function textInfo(node) {
+  const font = node.fontName === figma.mixed ? 'MIXED' : node.fontName
+  const lineHeight = node.lineHeight === figma.mixed ? 'MIXED' : node.lineHeight
+  const letterSpacing = node.letterSpacing === figma.mixed ? 'MIXED' : node.letterSpacing
+  const fontSize = node.fontSize === figma.mixed ? 'MIXED' : node.fontSize
+  return {
+    font: font === 'MIXED' ? 'MIXED' : { family: font.family, style: font.style },
+    fontFamily: font === 'MIXED' ? 'MIXED' : font.family,
+    fontSize,
+    lineHeight: lineHeight === 'MIXED' ? 'MIXED' : { value: lineHeight.value, unit: lineHeight.unit },
+    letterSpacing: letterSpacing === 'MIXED' ? 'MIXED' : { value: letterSpacing.value, unit: letterSpacing.unit },
+    textAlignHorizontal: node.textAlignHorizontal,
+    textAlignVertical: node.textAlignVertical,
+    textAutoResize: node.textAutoResize,
+  }
+}
+
 function summary(node, depth, opts) {
   const maxChildren = (opts && opts.maxChildren) || 40
   const base = { id: node.id, name: node.name, type: node.type }
@@ -114,7 +132,10 @@ function summary(node, depth, opts) {
   if ('width' in node) base.width = round(node.width)
   if ('height' in node) base.height = round(node.height)
   if ('visible' in node) base.visible = node.visible
-  if (node.type === 'TEXT') base.characters = String(node.characters).slice(0, 160)
+  if (node.type === 'TEXT') {
+    base.characters = String(node.characters).slice(0, 160)
+    Object.assign(base, textInfo(node))
+  }
   if ('layoutMode' in node && node.layoutMode !== 'NONE') {
     base.layoutMode = node.layoutMode
     base.itemSpacing = node.itemSpacing
