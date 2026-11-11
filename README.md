@@ -182,6 +182,12 @@ The model sees the colours, the mask constrains the edit, and you pay once — t
 `≈ $0.0281 · 3 masks combined`. It is less exact than one mask on its own (the model has to respect
 the legend), which is why a single mask is still sent as a plain mask without the colour map.
 
+**Generate and Edit are different jobs.** *Generate* calls the text-to-image endpoint: it makes a new
+picture from the prompt and **ignores references** (an edit is not what it does). *Edit* uses the
+references, the masks and the sizes. If references are attached while Generate is selected, the panel
+says so under the tabs and offers a one-click switch to Edit — and the job log repeats it, because a
+silently ignored reference looks exactly like a broken edit.
+
 **Sizes have to agree**, because fal compares the mask with the first image and rejects a mismatch. The
 panel therefore derives every reference's pixel size from the exported PNG itself (not from the node's
 CSS size), and a selection wider than 1600 px is exported at 1× so a 1920-wide frame stays 1920 px

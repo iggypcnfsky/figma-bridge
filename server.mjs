@@ -12,6 +12,7 @@ import { createServer } from 'node:http'
 import { randomUUID, randomBytes } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { inflateSync } from 'node:zlib'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -316,6 +317,64 @@ function imageArgs(body, refPaths) {
   return args
 }
 
+/**
+ * Czy PNG naprawdę zawiera przezroczyste piksele (a nie tylko kanał alfa)?
+ * Obsługujemy to, co daje fal: 8-bit RGBA, bez przeplotu. Gdy format jest inny — null,
+ * żeby nie straszyć użytkownika fałszywym ostrzeżeniem.
+ */
+function pngHasTransparency(buffer) {
+  if (!buffer || buffer.length < 33 || buffer.toString('latin1', 12, 16) !== 'IHDR') return null
+  const width = buffer.readUInt32BE(16)
+  const height = buffer.readUInt32BE(20)
+  const depth = buffer[24]
+  const colorType = buffer[25]
+  const interlace = buffer[28]
+  if (depth !== 8 || colorType !== 6 || interlace !== 0) return null
+
+  const chunks = []
+  let offset = 8
+  while (offset + 8 <= buffer.length) {
+    const size = buffer.readUInt32BE(offset)
+    const type = buffer.toString('latin1', offset + 4, offset + 8)
+    if (type === 'IDAT') chunks.push(buffer.subarray(offset + 8, offset + 8 + size))
+    if (type === 'IEND') break
+    offset += 12 + size
+  }
+  if (chunks.length === 0) return null
+
+  const raw = inflateSync(Buffer.concat(chunks))
+  const stride = width * 4
+  if (raw.length < (stride + 1) * height) return null
+  const pixels = Buffer.alloc(stride * height)
+  let previous = Buffer.alloc(stride)
+  for (let y = 0; y < height; y += 1) {
+    const filter = raw[y * (stride + 1)]
+    const line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1))
+    const row = pixels.subarray(y * stride, (y + 1) * stride)
+    for (let x = 0; x < stride; x += 1) {
+      const a = x >= 4 ? row[x - 4] : 0
+      const b = previous[x]
+      const c = x >= 4 ? previous[x - 4] : 0
+      let value = line[x]
+      if (filter === 1) value += a
+      else if (filter === 2) value += b
+      else if (filter === 3) value += (a + b) >> 1
+      else if (filter === 4) {
+        const p = a + b - c
+        const pa = Math.abs(p - a)
+        const pb = Math.abs(p - b)
+        const pc = Math.abs(p - c)
+        value += pa <= pb && pa <= pc ? a : pb <= pc ? b : c
+      }
+      row[x] = value & 0xff
+    }
+    previous = row
+  }
+  let transparent = 0
+  for (let i = 3; i < pixels.length; i += 4) if (pixels[i] < 250) transparent += 1
+  return transparent > width * height * 0.002
+}
+
 const imageQueue = []
 let imageRunning = false
 
@@ -347,11 +406,12 @@ function pumpImageQueue() {
         base64: bytes ? bytes.toString('base64') : null,
         bytes: bytes ? bytes.length : 0,
       }
-      // PNG z kanałem alfa wygląda na czarną dziurę, gdy trafi na ciemne tło —
-      // lepiej powiedzieć to w logu niż udawać, że obraz jest zepsuty.
-      if (bytes && bytes.length > 26 && bytes.toString('latin1', 12, 16) === 'IHDR' && bytes[25] === 6) {
-        job.result.hasAlpha = true
-        job.log.push('result has an alpha channel — transparent areas render black on a dark canvas')
+      // Kanał alfa bywa obecny w każdym PNG (colorType 6), więc patrzymy na PIKSELE:
+      // ostrzeżenie ma sens tylko wtedy, gdy coś naprawdę jest przezroczyste.
+      const transparent = bytes ? pngHasTransparency(bytes) : null
+      if (transparent === true) {
+        job.result.hasTransparency = true
+        job.log.push('result has transparent pixels — they render black on a dark canvas')
       }
       job.status = 'done'
     })
