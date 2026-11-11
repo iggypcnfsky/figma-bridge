@@ -98,6 +98,23 @@ try {
   check('the mask reaches the payload', /<upload mask\.png>/.test(payload.mask_url || ''), payload.mask_url)
   check('nothing was charged', Boolean(job.result && job.result.dryRun), job.result && job.result.cost)
 
+  // a mask that does not match the first reference must be rejected before fal sees it
+  const mismatch = await fetch(`${BASE}/image/jobs`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      mode: 'edit',
+      prompt: 'swap',
+      model: 'openai/gpt-image-2.6/sunburst/edit',
+      refs: [{ filename: 'a.png', base64: png(16, 16, [10, 20, 30]).toString('base64') }],
+      mask: { filename: 'mask.png', base64: png(8, 8, [255, 255, 255]).toString('base64') },
+      dryRun: true,
+      confirmCost: true,
+    }),
+  })
+  const mismatchBody = await mismatch.json()
+  check('mask/reference size mismatch is rejected', mismatch.status === 400 && /identical dimensions/.test(mismatchBody.error || ''), mismatchBody)
+
   const dir = join(repo, 'out', 'jobs', started.id)
   check('mask is on disk next to the refs', existsSync(join(dir, 'mask.png')) && existsSync(join(dir, 'ref-0.png')) && existsSync(join(dir, 'ref-1.png')))
   if (existsSync(dir)) rmSync(dir, { recursive: true, force: true })

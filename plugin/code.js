@@ -1515,13 +1515,18 @@ async function uiExportSelection() {
   }
   const node = selection[0]
   try {
-    const bytes = await node.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 2 } })
+    // Rozmiar musi być prawdziwy: fal wymaga, żeby maska miała dokładnie ten sam rozmiar
+    // co pierwszy obraz. Eksport 2× i zgłoszone wymiary 1× dawały maskę o połowę za małą.
+    const longest = Math.max(node.width, node.height)
+    const scale = longest > 1600 ? 1 : 2
+    const bytes = await node.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: scale } })
     if (bytes.length > 12 * 1024 * 1024) throw new Error('selection is too large for a reference (12 MB cap)')
     figma.ui.postMessage({
       type: 'selectionImage',
       base64: toBase64(bytes),
-      width: Math.round(node.width),
-      height: Math.round(node.height),
+      width: Math.round(node.width * scale),
+      height: Math.round(node.height * scale),
+      scale,
       name: node.name,
     })
   } catch (err) {

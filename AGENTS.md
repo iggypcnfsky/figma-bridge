@@ -85,8 +85,8 @@ Image generation (optional; needs a `FAL_KEY` and the sibling CLI,
 - `POST /image/jobs` with `mode: "edit"` takes `refs: [{filename, base64}, …]` — any number; the server
   writes each to the job dir and passes one `--ref` per image. In the panel: **Edit → Use selection**
   (exports the selected frame at 2×) or **Add image…** (files from disk, several at once)
-- optional `mask: {filename, base64}` — a PNG the size of the reference where **white = change, black =
-  keep** (fal's `mask_url` semantics; the CLI flag is `--mask`, plus `--markup`). The panel paints it
+- optional `mask: {filename, base64}` — a PNG **exactly the size of the first reference** where
+  **white = change, black = keep** (a mismatch is rejected with 400 before any call) (fal's `mask_url` semantics; the CLI flag is `--mask`, plus `--markup`). The panel paints it
   over the first reference (**Paint mask…**, brush/erase, clear) and sends it at reference size.
 - one request carries one mask, so with several masks the panel combines them: the masks are OR-ed
   into one white `mask_url`, and a colour map of the reference (each area tinted with its mask colour)

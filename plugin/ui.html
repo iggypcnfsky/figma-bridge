@@ -376,18 +376,26 @@
             maskFromBase64(msg.base64).catch((err) => log('mask: ' + err.message))
             return
           }
+          // wymiary bierzemy z samych pikseli PNG, nie z tego, co zgłosił plugin — inaczej
+          // maska i obraz mogą się rozjechać o współczynnik eksportu
+          const dims = await new Promise((resolve) => {
+            const probe = new Image()
+            probe.onload = () => resolve({ width: probe.naturalWidth, height: probe.naturalHeight })
+            probe.onerror = () => resolve({ width: msg.width, height: msg.height })
+            probe.src = 'data:image/png;base64,' + msg.base64
+          })
           if (state.selMode === 'extra') {
             // „Add selection”: kolejny obraz z canvasu, dopisany jako #imageN
-            const ref = { filename: 'selection-' + (state.refs.length + 1) + '.png', base64: msg.base64, width: msg.width, height: msg.height, source: 'selection-extra' }
+            const ref = { filename: 'selection-' + (state.refs.length + 1) + '.png', base64: msg.base64, width: dims.width, height: dims.height, source: 'selection-extra' }
             addRef(ref, false)
-            log('added #image' + state.refs.length + ' from the canvas (' + msg.width + '×' + msg.height + ')')
+            log('added #image' + state.refs.length + ' from the canvas (' + dims.width + '×' + dims.height + ')')
             return
           }
-          addRef({ filename: 'selection.png', base64: msg.base64, width: msg.width, height: msg.height, source: 'selection' }, true)
+          addRef({ filename: 'selection.png', base64: msg.base64, width: dims.width, height: dims.height, source: 'selection' }, true)
           // dopasuj wyjście do referencji: to jest sens edycji istniejącego obrazka
           state.preset = 'selection'
-          $('sizeW').value = Math.round(msg.width)
-          $('sizeH').value = Math.round(msg.height)
+          $('sizeW').value = dims.width
+          $('sizeH').value = dims.height
           renderChips()
           updateCost()
           return
@@ -604,15 +612,7 @@
             updateCost()
           }
 
-          const instruction = document.createElement('input')
-          instruction.className = 'maskinstr'
-          instruction.placeholder = 'instruction for this mask, e.g. swap the wall for the material in #image2'
-          instruction.value = mask.instruction
-          instruction.oninput = () => { mask.instruction = instruction.value }
-          instruction.onchange = () => updateCost()
-
           row.append(thumb, nameWrap, remove)
-          row.append(instruction)
           list.append(row)
         }
         $('maskInfo').textContent = state.masks.length === 0
@@ -633,7 +633,7 @@
             return existing
           }
         }
-        const mask = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: nextMaskName(), color: nextMaskColor(), base64, width, height, instruction: '' }
+        const mask = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: nextMaskName(), color: nextMaskColor(), base64, width, height }
         state.masks.push(mask)
         renderMasks()
         updateCost()
@@ -715,8 +715,9 @@
         const ref = primaryRef()
         if (!ref) return log('add a reference first — the mask is painted over it')
         const image = await loadImage('data:image/png;base64,' + ref.base64)
-        const naturalWidth = Math.round(ref.width || image.naturalWidth)
-        const naturalHeight = Math.round(ref.height || image.naturalHeight)
+        // źródłem prawdy są piksele PNG — fal porównuje maskę z obrazem, nie z metadanymi
+        const naturalWidth = image.naturalWidth || Math.round(ref.width)
+        const naturalHeight = image.naturalHeight || Math.round(ref.height)
 
         // maska: pełna rozdzielczość obrazu, zero skalowania przy zapisie
         const maskCanvas = document.createElement('canvas')
@@ -1295,6 +1296,10 @@
           log('prompt · ' + expanded.replace(/\s+/g, ' ').slice(0, 140) + (expanded.length > 140 ? '…' : ''))
 
           const base = primaryRef()
+          if (passMask && base && (passMask.width !== base.width || passMask.height !== base.height)) {
+            throw new Error('mask is ' + passMask.width + '×' + passMask.height + ' but the base image is ' +
+              base.width + '×' + base.height + ' — repaint the mask on this reference (fal requires identical sizes)')
+          }
           const refs = state.mode === 'edit' ? [base, ...extraRefs].filter(Boolean) : []
           const payload = {
             mode: state.mode,

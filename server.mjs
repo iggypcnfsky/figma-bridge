@@ -384,12 +384,31 @@ function enqueueImageJob(body) {
     refPaths.push(file)
   }
 
+  // fal compares the mask with the FIRST image and rejects a mismatch; catching it here
+  // turns a paid 422 into a clear message.
+  function pngSize(buffer) {
+    if (!buffer || buffer.length < 24) return null
+    if (buffer.toString('latin1', 12, 16) !== 'IHDR') return null
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) }
+  }
+
   // Maska: panel wysyła gotowy PNG (białe = edytuj, czarne = zostaw), albo ścieżkę (CLI/agent).
   let maskPath = typeof body.mask === 'string' ? body.mask : null
   if (body.mask && typeof body.mask === 'object') {
     if (!body.mask.base64) throw new Error('mask needs {filename, base64}')
     maskPath = join(dir, 'mask.png')
     writeFileSync(maskPath, Buffer.from(String(body.mask.base64), 'base64'))
+  }
+
+  if (maskPath && refPaths.length > 0) {
+    const mask = pngSize(readFileSync(maskPath))
+    const first = pngSize(readFileSync(refPaths[0]))
+    if (mask && first && (mask.width !== first.width || mask.height !== first.height)) {
+      throw new Error(
+        'mask is ' + mask.width + '×' + mask.height + ' but the first reference is ' + first.width + '×' + first.height +
+          ' — fal requires identical dimensions',
+      )
+    }
   }
 
   const args = imageArgs(Object.assign({}, body, maskPath ? { mask: maskPath } : {}), refPaths)

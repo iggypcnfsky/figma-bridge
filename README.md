@@ -182,6 +182,12 @@ The model sees the colours, the mask constrains the edit, and you pay once — t
 `≈ $0.0281 · 3 masks combined`. It is less exact than one mask on its own (the model has to respect
 the legend), which is why a single mask is still sent as a plain mask without the colour map.
 
+**Sizes have to agree**, because fal compares the mask with the first image and rejects a mismatch. The
+panel therefore derives every reference's pixel size from the exported PNG itself (not from the node's
+CSS size), and a selection wider than 1600 px is exported at 1× so a 1920-wide frame stays 1920 px
+instead of silently becoming 3840. If a mask ever disagrees with the base, the panel says so before
+the call and the server refuses the job (`400 … identical dimensions`) instead of spending on a 422.
+
 **How the prompt is assembled** — one place, so it is predictable:
 
 | masks | what actually goes to fal |
