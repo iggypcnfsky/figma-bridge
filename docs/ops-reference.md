@@ -307,6 +307,34 @@ with `update` — `fills` accepts raw paint objects as well as hex strings.
 Returns `{ id, name, type }` of the instance — the correct way to build with an existing design system
 instead of drawing look-alikes.
 
+## instanceText
+
+Change copy inside a component instance without detaching it.
+
+| parameter | meaning |
+|---|---|
+| `instanceId` | node of type `INSTANCE` |
+| `list` | `true` returns the text nodes only (index, id, name, characters) |
+| `overrides` | `[{ name?, index?, nodeId?, characters }]` — match by name (exact, then partial), by index, or by id |
+
+```bash
+./bin/figma op '{"op":"instanceText","instanceId":"12:34","list":true}'
+./bin/figma op '{"op":"instanceText","instanceId":"12:34","overrides":[{"name":"Title","characters":"Q3 plan"}]}'
+```
+
+Returns `{ applied: [{ok, id, name, characters?, reason?}] }` — a failed override carries Figma's reason
+(missing text node, `MIXED` font), and the rest still apply.
+
+## instanceProps
+
+| parameter | meaning |
+|---|---|
+| `instanceId` | instance |
+| `set` | `{ "Size": "Large", "State": "Hover" }` — component property / variant values |
+
+Call without `set` to read the current properties first; names must match exactly, so read, then write.
+Returns `{ id, applied, properties }`.
+
 ## applyStyle
 
 | parameter | meaning |

@@ -61,8 +61,9 @@ Design-work shortcuts worth knowing:
   `{"op":"effects","nodeId":"…","blur":{"type":"BACKGROUND","radius":20}}`.
 - **gradients**: `{"op":"gradient","nodeId":"…","kind":"linear","angle":135,"stops":[[0,"#8B76FF"],[1,"#0E0E12"]]}`
   — angle 0 is left → right, 90 is top → bottom. Never fake a gradient with stacked rectangles.
-- **design system**: `createInstance` with a `COMPONENT` id, and `applyStyle` by style name; do not
-  redraw what the library already ships.
+- **design system**: `createInstance` with a `COMPONENT` id, then `instanceProps` for variants (read
+  the names first) and `instanceText` to change copy without detaching; `applyStyle` for styles. Do not
+  redraw what the library already ships, and do not detach an instance to "fix" its text.
 - **responsive**: `sizing` sets `HUG`/`FILL`/`FIXED` per axis plus min/max; `constraints` covers
   non-auto-layout children (`STRETCH`/`MIN`/`MAX`/`CENTER`/`SCALE`). Read both from `node` before
   changing them — `sizing` returns `skipped` with Figma's reason when a property does not apply.

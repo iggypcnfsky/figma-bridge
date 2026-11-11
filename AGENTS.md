@@ -97,6 +97,7 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
 | Diagnostics | `ping`, `status`, `pages`, `variables`, `styles`, `fonts` |
 | Read | `selection`, `node`, `find` |
 | Create | `createFrame`, `createRect`, `createEllipse`, `createText`, `createPage`, `createInstance` |
+| Components | `instanceText`, `instanceProps` |
 | Modify | `update`, `clone`, `reparent`, `remove`, `goto`, `group`, `ungroup`, `select` |
 | Layout | `grids`, `setGrids`, `align`, `distribute`, `constraints`, `sizing`, `effects`, `gradient` |
 | Styles | `styles`, `applyStyle`, `varFill` |

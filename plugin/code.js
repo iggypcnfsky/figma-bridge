@@ -780,6 +780,73 @@ const OPS = {
     return { id: instance.id, name: instance.name, type: instance.type }
   },
 
+  /** Tekst wewnątrz instancji: lista pól tekstowych i nadpisywanie ich treści (override). */
+  async instanceText({ instanceId, overrides, list = false } = {}) {
+    const instance = await getNode(instanceId)
+    if (instance.type !== 'INSTANCE') fail('node is not an INSTANCE: ' + instance.type)
+
+    const texts = []
+    walk(instance, (node) => {
+      if (node.type === 'TEXT') texts.push(node)
+      return true
+    }, 5000)
+
+    const described = texts.map((node, index) => ({
+      index,
+      id: node.id,
+      name: node.name,
+      characters: String(node.characters).slice(0, 120),
+    }))
+    if (list || !Array.isArray(overrides) || overrides.length === 0) return { texts: described }
+
+    const applied = []
+    for (const override of overrides) {
+      const target = override.nodeId
+        ? texts.find((node) => node.id === override.nodeId)
+        : override.name
+          ? texts.find((node) => node.name === override.name) ||
+            texts.find((node) => node.name.toLowerCase().includes(String(override.name).toLowerCase()))
+          : texts[Number(override.index)]
+
+      if (!target) {
+        applied.push({ ok: false, match: override.name || override.nodeId || override.index, reason: 'text node not found in this instance' })
+        continue
+      }
+      if (override.characters === undefined) {
+        applied.push({ ok: false, id: target.id, reason: 'missing characters' })
+        continue
+      }
+      try {
+        if (target.fontName === figma.mixed) throw new Error('font is MIXED on this text node')
+        await figma.loadFontAsync(target.fontName)
+        target.characters = String(override.characters)
+        applied.push({ ok: true, id: target.id, name: target.name, characters: target.characters })
+      } catch (err) {
+        applied.push({ ok: false, id: target.id, name: target.name, reason: err.message })
+      }
+    }
+    return { applied }
+  },
+
+  /** Warianty i właściwości komponentu (component properties) na instancji. */
+  async instanceProps({ instanceId, set } = {}) {
+    const instance = await getNode(instanceId)
+    if (instance.type !== 'INSTANCE') fail('node is not an INSTANCE: ' + instance.type)
+    const read = () => {
+      const properties = instance.componentProperties || {}
+      return Object.fromEntries(
+        Object.entries(properties).map(([key, value]) => [key, value && typeof value === 'object' ? value.value : value]),
+      )
+    }
+    if (!set) return { id: instance.id, properties: read() }
+    try {
+      instance.setProperties(set)
+    } catch (err) {
+      fail('setProperties failed: ' + err.message + ' — check the property names in `instanceProps`')
+    }
+    return { id: instance.id, applied: Object.keys(set), properties: read() }
+  },
+
   /** Stosuje istniejący styl lokalny po nazwie (dokładnej albo po fragmencie). */
   async applyStyle({ nodeId, styleName, kind = 'text' } = {}) {
     if (!styleName) fail('missing styleName')
