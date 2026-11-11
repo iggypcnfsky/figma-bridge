@@ -144,11 +144,15 @@ figma agents      # who is on this canvas, with a live/idle state per agent
 An agent identifies itself so the user (and the other agents) can tell who did what:
 
 - CLI: `--agent <name>` or `FIGMA_AGENT=<name>`; the value travels as the `x-agent` header.
+- A readable name next to that id: `--label "…"` / `FIGMA_AGENT_LABEL` → `x-agent-label`
+  (percent-encoded, so Polish characters and emoji survive). A name set in the panel beats it.
 - Under DSH the session id is used automatically (`dsh:<session>`), so two sessions are already two
   agents without configuration. A plain shell without either falls back to `cli`.
 - The panel's **Agents** tab lists them, renames them, forgets them, and mints a new id with the exact
   command to run (`FIGMA_AGENT=agent-3 figma status`). Names live in server memory — a restart resets
   them to their ids, and agents idle for 12 h drop off the list.
+- DSH chat titles are **not** readable from the bridge (a session persists a header, the title lives in
+  the GUI), so pass the label: `FIGMA_AGENT_LABEL="Figma bridge panel — resize" figma …`.
 
 If you need true isolation for a big build, ask the user to open the plugin in a second Figma window
 of the same file and target it with `--client`; the two lanes then work independently.

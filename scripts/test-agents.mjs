@@ -43,10 +43,12 @@ async function status() {
   }
 }
 
-async function runAs(agent, ops = [{ op: 'ping' }]) {
+async function runAs(agent, ops = [{ op: 'ping' }], label) {
+  const headers = { 'content-type': 'application/json', 'x-agent': agent }
+  if (label) headers['x-agent-label'] = encodeURIComponent(label)
   const res = await fetch(`${BASE}/run`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-agent': agent },
+    headers,
     body: JSON.stringify({ ops, timeoutMs: 8000 }),
   })
   return { status: res.status, body: await res.json() }
@@ -75,6 +77,19 @@ try {
   const codex = d.agents.find((x) => x.id === 'codex')
   check('per-agent counters', claude?.runs === 1 && claude?.ops === 1 && codex?.runs === 1, d.agents)
   check('agents are idle after the batch', claude?.busy === null && codex?.busy === null, d.agents)
+
+  // a label from the agent names it, and a manual rename wins over later labels
+  await runAs('labelled', [{ op: 'ping' }], 'Figma bridge panel — resize')
+  d = await status()
+  check('x-agent-label names the agent', d.agents.find((x) => x.id === 'labelled')?.name === 'Figma bridge panel — resize', d.agents)
+  await fetch(`${BASE}/agents/labelled`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Renamed by hand' }),
+  })
+  await runAs('labelled', [{ op: 'ping' }], 'some other label')
+  d = await status()
+  check('a manual rename survives new labels', d.agents.find((x) => x.id === 'labelled')?.name === 'Renamed by hand', d.agents)
 
   // busy flag while a batch is running: ask for a slow batch and look immediately
   const slow = runAs('claude', [{ op: 'exec', code: 'await new Promise(r => setTimeout(r, 600)); return 1' }])

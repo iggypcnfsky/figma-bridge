@@ -137,16 +137,18 @@ function agentLabel(id) {
   return id
 }
 
-function touchAgent(id) {
+function touchAgent(id, label) {
   if (!id) return null
   const key = String(id).slice(0, 48)
   let entry = agents.get(key)
   if (!entry) {
     agentCounter += 1
-    entry = { id: key, name: agentLabel(key), firstSeen: Date.now(), lastSeen: Date.now(), runs: 0, ops: 0, client: null, busy: null }
+    entry = { id: key, name: agentLabel(key), firstSeen: Date.now(), lastSeen: Date.now(), runs: 0, ops: 0, client: null, busy: null, renamed: false }
     agents.set(key, entry)
     log(`agent ${key} joined`)
   }
+  // A label from the agent (x-agent-label) names it, unless the user renamed it in the panel.
+  if (label && !entry.renamed && entry.name !== label) entry.name = String(label).slice(0, 40)
   entry.lastSeen = Date.now()
   return entry
 }
@@ -619,7 +621,10 @@ async function handle(req, res) {
     if (req.method === 'POST') {
       let body
       try { body = await readBody(req) } catch (err) { return json(res, 400, { error: err.message }) }
-      if (body?.name !== undefined) entry.name = String(body.name).slice(0, 40) || agentLabel(id)
+      if (body?.name !== undefined) {
+        entry.name = String(body.name).slice(0, 40) || agentLabel(id)
+        entry.renamed = true
+      }
       entry.lastSeen = Date.now()
       return json(res, 200, { agent: agentsList().find((a) => a.id === id), agents: agentsList() })
     }
@@ -689,7 +694,13 @@ async function handle(req, res) {
     const id = randomUUID()
     const claimed = String(req.headers['x-agent'] || body?.agent || 'cli')
     const agentId = AGENT_ID_RE.test(claimed) ? claimed : 'cli'
-    const agent = touchAgent(agentId)
+    let label = null
+    try {
+      label = req.headers['x-agent-label'] ? decodeURIComponent(String(req.headers['x-agent-label'])) : null
+    } catch {
+      label = String(req.headers['x-agent-label'])
+    }
+    const agent = touchAgent(agentId, label)
     agent.runs += 1
     agent.ops += ops.length
     const job = { id, ops, dryRun: Boolean(body.dryRun), ts: Date.now(), client: resolvedClient, file: targetFile, agent: agentId }

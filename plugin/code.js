@@ -1566,7 +1566,11 @@ figma.ui.onmessage = async (msg) => {
   if (!msg || typeof msg.type !== 'string') return
 
   if (msg.type === 'resize') {
-    figma.ui.resize(Math.round(Number(msg.width) || 232), Math.round(Number(msg.height) || 34))
+    // Figma sam ogranicza okno do 1080 px, ale egzekwujemy to po naszej stronie,
+    // bo panel przeciąga rozmiar z localStorage.
+    const width = Math.min(1080, Math.max(200, Math.round(Number(msg.width) || 232)))
+    const height = Math.min(1080, Math.max(120, Math.round(Number(msg.height) || 34)))
+    figma.ui.resize(width, height)
     return
   }
   if (msg.type === 'selectionInfo') return uiSelectionInfo()

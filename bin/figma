@@ -22,12 +22,15 @@ TARGET_CLIENT="${FIGMA_BRIDGE_CLIENT:-}"
 # Tożsamość agenta: panel widzi ją jako „kto jest na canvasie”. Bez tego każdy proces byłby „cli”.
 AGENT="${FIGMA_AGENT:-${DSH_SESSION_ID:+dsh:$DSH_SESSION_ID}}"
 AGENT="${AGENT:-cli}"
+# Czytelna nazwa obok id — np. tytuł czatu albo „Rafał / Codex”.
+AGENT_LABEL="${FIGMA_AGENT_LABEL:-}"
 ARGS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --file) TARGET_FILE="${2:-}"; shift 2 ;;
     --client) TARGET_CLIENT="${2:-}"; shift 2 ;;
     --agent) AGENT="${2:-cli}"; shift 2 ;;
+    --label) AGENT_LABEL="${2:-}"; shift 2 ;;
     *) ARGS+=("$1"); shift ;;
   esac
 done
@@ -46,9 +49,15 @@ post_run() {
   if [ -n "$TARGET_CLIENT" ]; then
     target="$target,\"client\":\"${TARGET_CLIENT//\"/}\""
   fi
+  local label_header=()
+  if [ -n "$AGENT_LABEL" ]; then
+    # nagłówki HTTP są latin-1 — polskie znaki i emoji muszą przejść przez encodeURIComponent
+    label_header=(-H "x-agent-label: $(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$AGENT_LABEL")")
+  fi
   curl -sS -X POST "$BASE/run" \
     -H 'content-type: application/json' \
     -H "x-agent: $AGENT" \
+    ${label_header[@]+"${label_header[@]}"} \
     --data "{\"ops\":$payload$target${extra}}" || die "cannot reach $BASE (is the server running?)"
 }
 

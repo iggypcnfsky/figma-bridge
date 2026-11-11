@@ -5,7 +5,10 @@
     <style>
       :root { color-scheme: light dark; }
       * { box-sizing: border-box; }
+      html, body { height: 100%; }
       body {
+        display: flex;
+        flex-direction: column;
         margin: 0;
         font: 11px/1.35 Inter, system-ui, -apple-system, sans-serif;
         color: var(--figma-color-text, #111);
@@ -36,7 +39,13 @@
       #toggle { padding: 2px 6px; line-height: 1; }
 
       /* panel */
-      #panel { padding: 0 8px 8px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+      #panel { padding: 0 8px 8px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+      #grip { position: fixed; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize;
+        background: linear-gradient(135deg, transparent 46%, var(--figma-color-border-strong, #999) 46%,
+          var(--figma-color-border-strong, #999) 54%, transparent 54%, transparent 68%,
+          var(--figma-color-border-strong, #999) 68%, var(--figma-color-border-strong, #999) 76%, transparent 76%);
+        opacity: .55; z-index: 5; }
+      #grip:hover { opacity: 1; }
       .tabs { display: flex; gap: 4px; }
       .tabs button { flex: 1; }
       .tabs button.on { background: var(--figma-color-bg-brand, #0d99ff); color: #fff; border-color: transparent; }
@@ -50,7 +59,7 @@
       #cost { font-size: 10px; opacity: .8; min-height: 13px; }
       #go { padding: 7px; font-weight: 600; }
       #log { font-size: 10px; opacity: .75; max-height: 46px; overflow: auto; white-space: pre-wrap; }
-      #preview { width: 100%; border-radius: 6px; border: 1px solid var(--figma-color-border, #ddd); background: #000; }
+      #preview { width: 100%; max-height: 52vh; object-fit: contain; border-radius: 6px; border: 1px solid var(--figma-color-border, #ddd); background: #000; }
       #refInfo { font-size: 10px; opacity: .75; }
       .refs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
       .refs:empty { display: none; }
@@ -198,11 +207,36 @@
 
     </div>
 
+    <div id="grip" class="hidden" title="Drag to resize · double-click to reset"></div>
+
     <script>
       const BASE = 'http://localhost:3847'
       const BASE_PRESETS = ['1:1@1024', '16:9@2k', '9:16@1080']
       const COLLAPSED = { width: 232, height: 34 }
       const EXPANDED = { width: 360, height: 720 }
+      // Okno pluginu nie ma natywnego uchwytu — przeciąganie rogu sami tłumaczymy na figma.ui.resize.
+      const MIN_SIZE = { width: 300, height: 340 }
+      const MAX_SIZE = { width: 1080, height: 1080 }
+      const SIZE_KEY = 'figma-bridge:size'
+
+      function loadPanelSize() {
+        try {
+          const raw = JSON.parse(localStorage.getItem(SIZE_KEY) || 'null')
+          if (raw && Number(raw.width) && Number(raw.height)) {
+            return {
+              width: Math.min(MAX_SIZE.width, Math.max(MIN_SIZE.width, Number(raw.width))),
+              height: Math.min(MAX_SIZE.height, Math.max(MIN_SIZE.height, Number(raw.height))),
+            }
+          }
+        } catch {
+          /* brak zapisanego rozmiaru — trudno */
+        }
+        return { ...EXPANDED }
+      }
+
+      function savePanelSize(size) {
+        try { localStorage.setItem(SIZE_KEY, JSON.stringify(size)) } catch { /* ignore */ }
+      }
 
       const $ = (id) => document.getElementById(id)
       const dot = $('dot')
@@ -222,6 +256,7 @@
         maskBase: null,
         agents: [],
         windows: [],
+        panelSize: loadPanelSize(),
         agentCmd: '',
         result: null,
         autoInsert: true,
@@ -469,8 +504,9 @@
         if (!ref) return log('add a reference first — the mask is painted over it')
         const image = await loadImage('data:image/png;base64,' + ref.base64)
         const canvas = $('maskCanvas')
-        const maxW = 328
-        const maxH = 250
+        // maska rośnie razem z oknem — duży podgląd to cały sens powiększania panelu
+        const maxW = Math.max(220, Math.min(760, ($('maskEditor').clientWidth || 328) - 2))
+        const maxH = Math.max(160, Math.min(560, window.innerHeight * 0.42))
         const scale = Math.min(maxW / (ref.width || image.naturalWidth), maxH / (ref.height || image.naturalHeight), 1)
         canvas.width = Math.max(32, Math.round((ref.width || image.naturalWidth) * scale))
         canvas.height = Math.max(32, Math.round((ref.height || image.naturalHeight) * scale))
@@ -913,7 +949,8 @@
         state.expanded = !state.expanded
         $('panel').classList.toggle('hidden', !state.expanded)
         $('toggle').style.transform = state.expanded ? 'rotate(180deg)' : 'none'
-        const size = state.expanded ? EXPANDED : COLLAPSED
+        const size = state.expanded ? state.panelSize : COLLAPSED
+        $('grip').classList.toggle('hidden', !state.expanded)
         toPlugin({ type: 'resize', width: size.width, height: size.height })
         if (state.expanded) {
           if (!Object.keys(state.models).length) loadModels()
@@ -968,6 +1005,50 @@
 
       $('addRef').innerHTML = ICONS.image + '<span>Add image</span>'
       $('addRef').onclick = () => $('refFile').click()
+
+      // ------------------------------------------------------------ rozmiar okna
+      let drag = null
+      const clampSize = (size) => ({
+        width: Math.min(MAX_SIZE.width, Math.max(MIN_SIZE.width, Math.round(size.width))),
+        height: Math.min(MAX_SIZE.height, Math.max(MIN_SIZE.height, Math.round(size.height))),
+      })
+      $('grip').onpointerdown = (event) => {
+        event.preventDefault()
+        drag = {
+          startX: event.clientX,
+          startY: event.clientY,
+          width: window.innerWidth,
+          height: window.innerHeight,
+          frame: 0,
+        }
+        $('grip').setPointerCapture(event.pointerId)
+      }
+      $('grip').onpointermove = (event) => {
+        if (!drag) return
+        drag.next = clampSize({
+          width: drag.width + (event.clientX - drag.startX),
+          height: drag.height + (event.clientY - drag.startY),
+        })
+        if (drag.frame) return
+        // throttle: jedno resize na klatkę, inaczej przeciąganie zamula iframe
+        drag.frame = requestAnimationFrame(() => {
+          if (!drag) return
+          drag.frame = 0
+          toPlugin({ type: 'resize', width: drag.next.width, height: drag.next.height })
+        })
+      }
+      $('grip').onpointerup = () => {
+        if (!drag) return
+        drag = null
+        state.panelSize = clampSize({ width: window.innerWidth, height: window.innerHeight })
+        savePanelSize(state.panelSize)
+      }
+      $('grip').onpointercancel = () => { drag = null }
+      $('grip').ondblclick = () => {
+        state.panelSize = { ...EXPANDED }
+        savePanelSize(state.panelSize)
+        toPlugin({ type: 'resize', width: EXPANDED.width, height: EXPANDED.height })
+      }
 
       $('paintMask').onclick = () => openMaskEditor().catch((err) => log('mask: ' + err.message))
       $('maskFromSel').onclick = () => {
