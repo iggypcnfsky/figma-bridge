@@ -94,7 +94,7 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
 
 | Group | Operations |
 |---|---|
-| Diagnostics | `ping`, `status`, `pages`, `variables`, `styles` |
+| Diagnostics | `ping`, `status`, `pages`, `variables`, `styles`, `fonts` |
 | Read | `selection`, `node`, `find` |
 | Create | `createFrame`, `createRect`, `createEllipse`, `createText`, `createPage` |
 | Modify | `update`, `clone`, `reparent`, `remove`, `goto` |

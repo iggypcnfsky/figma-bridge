@@ -476,6 +476,47 @@ const OPS = {
     return { id: n.id, variable: variable.name, variableId: variable.id, field }
   },
 
+  async fonts({ allPages = false, limit = 20000 } = {}) {
+    const families = new Map()
+    let scanned = 0
+    let truncated = false
+    const visit = (node) => {
+      scanned += 1
+      if (scanned > limit) {
+        truncated = true
+        return false
+      }
+      if (node.type !== 'TEXT') return true
+      const font = node.fontName === figma.mixed ? { family: 'MIXED', style: 'MIXED' } : node.fontName
+      const key = font.family + ' / ' + font.style
+      const entry = families.get(key) || { family: font.family, style: font.style, count: 0, sizes: new Set(), sampleIds: [] }
+      entry.count += 1
+      if (node.fontSize !== figma.mixed) entry.sizes.add(node.fontSize)
+      if (entry.sampleIds.length < 3) entry.sampleIds.push(node.id)
+      families.set(key, entry)
+      return true
+    }
+
+    if (allPages) {
+      await figma.loadAllPagesAsync()
+      for (const page of figma.root.children) walk(page, visit, limit)
+    } else {
+      walk(figma.currentPage, visit, limit)
+    }
+
+    const list = [...families.values()]
+      .map((entry) => ({
+        family: entry.family,
+        style: entry.style,
+        count: entry.count,
+        sizes: [...entry.sizes].sort((a, b) => a - b),
+        sampleIds: entry.sampleIds,
+      }))
+      .sort((a, b) => b.count - a.count)
+
+    return { families: list, textNodes: list.reduce((sum, entry) => sum + entry.count, 0), scanned, truncated }
+  },
+
   async styles({ limit = 200 } = {}) {
     const [paints, texts] = await Promise.all([paintStyles(), textStyles()])
     return {

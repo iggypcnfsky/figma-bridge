@@ -191,6 +191,23 @@ Binds the variable through `setBoundVariableForPaint`. Returns `{ id, variable, 
 
 Returns `{ paint: [{id,name,type}], text: [{id,name}], counts: {paint,text} }`.
 
+## fonts
+
+Typography audit in one call — what agents otherwise rebuild as a fragile script.
+
+| parameter | default | meaning |
+|---|---|---|
+| `allPages` | `false` | scan every page (calls `loadAllPagesAsync`) |
+| `limit` | `20000` | safety cap on visited nodes; `truncated: true` when hit |
+
+Returns `{ families: [{ family, style, count, sizes, sampleIds }], textNodes, scanned, truncated }`,
+sorted by usage. Mixed styles report family/style `"MIXED"`.
+
+```bash
+./bin/figma op '{"op":"fonts"}'
+./bin/figma op '{"op":"fonts","allPages":true}'
+```
+
 ## export
 
 | parameter | default | meaning |

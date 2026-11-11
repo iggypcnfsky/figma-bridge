@@ -46,7 +46,7 @@ cd <repo>/figma-bridge
 ./bin/figma image 12:34 out/cover.png FILL      # local image file → fill (no cloud upload)
 ```
 
-Ops: `ping status pages variables styles` · `selection node find` · `createFrame createRect
+Ops: `ping status pages variables styles fonts` · `selection node find` · `createFrame createRect
 createEllipse createText createPage` · `update clone reparent remove goto` · `varFill` ·
 `export imageFill` · `exec`. Full parameters: `docs/ops-reference.md`.
 
@@ -91,6 +91,8 @@ Presets saved in that panel live in `figma-bridge/presets.json`.
 - `figma.currentPage` is the page open in that Figma window — not a saved pointer. Switching tabs
   changes what you see on the next call.
 - Positions are relative to the parent, and an omitted `parentId` means the **current page**.
+- Typography questions (which fonts, sizes, counts) are one call: `{"op":"fonts"}`; add
+  `"allPages":true` for the whole file. Do not walk frames with your own script.
 - Never index a field the reference does not list. `summary` carries `font`, `fontSize`, `lineHeight`
   and `letterSpacing` for TEXT; everything else comes from `exec` with the real API name. Mixed styles
   are the string `"MIXED"`, so guard with `.get()` and fallbacks.
