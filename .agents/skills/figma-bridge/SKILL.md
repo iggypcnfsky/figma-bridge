@@ -40,7 +40,11 @@ cd <repo>/figma-bridge
 ./bin/figma run '[{"op":"createText","parentId":"12:34","characters":"Title","fontSize":24,"color":"#FFFFFF"}]'
 ./bin/figma op '{"op":"varFill","nodeId":"12:34","variableName":"color/bg/surface"}'
 ./bin/figma export 12:34 out/card.png PNG 2
+./bin/figma image 12:34 out/cover.png FILL      # local image file → fill (no cloud upload)
 ```
+
+Need artwork? Generate it with the sibling `img-forge` CLI, then place it:
+`img-forge gen --prompt "…" --preset 16:9@2k --out out/cover.png` → `./bin/figma image <nodeId> out/cover.png FILL`.
 
 Ops: `ping status pages variables styles` · `selection node find` · `createFrame createRect
 createEllipse createText createPage` · `update clone reparent remove goto` · `varFill` ·

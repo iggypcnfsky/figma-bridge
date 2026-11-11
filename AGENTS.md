@@ -33,6 +33,7 @@ agent ──HTTP──▶ server.mjs (localhost:3847) ◀──long-poll── p
 ./bin/figma op '{"op":"status"}'         # a single operation
 ./bin/figma run '[{"op":"…"},{"op":"…"}]'  # a batch of operations
 ./bin/figma export <nodeId> <file> [PNG|JPG|SVG|PDF] [scale]
+./bin/figma image <nodeId> <file> [FILL|FIT|TILE|CROP]   # image file → fill, no cloud upload
 ```
 
 `FIGMA_BRIDGE_URL` overrides the address (default `http://127.0.0.1:3847`).

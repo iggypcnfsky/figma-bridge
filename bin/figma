@@ -73,6 +73,21 @@ case "$CMD" in
     post_run "$PAYLOAD" "$EXTRA" | pretty
     ;;
 
+  image)
+    NODE="${1:-}"; FILE="${2:-}"
+    [ -n "$NODE" ] && [ -n "$FILE" ] || die "usage: figma image <nodeId> <file.png> [FILL|FIT|TILE|CROP]"
+    [ -f "$FILE" ] || die "no such file: $FILE"
+    MODE="${3:-FILL}"
+    python3 - "$NODE" "$FILE" "$MODE" > /tmp/figma-image-payload.json <<'PY2'
+import base64, json, sys
+node, path, mode = sys.argv[1], sys.argv[2], sys.argv[3]
+data = base64.b64encode(open(path, 'rb').read()).decode()
+print(json.dumps({"ops": [{"op": "imageFill", "nodeId": node, "base64": data, "scaleMode": mode}]}))
+PY2
+    curl -sS -X POST "$BASE/run" -H 'content-type: application/json' \
+      --data-binary @/tmp/figma-image-payload.json | pretty
+    ;;
+
   export)
     NODE="${1:-}"; OUT="${2:-}"; FMT="${3:-PNG}"; SCALE="${4:-2}"
     [ -n "$NODE" ] && [ -n "$OUT" ] || die "usage: figma export <nodeId> <file.png> [PNG|JPG|SVG|PDF] [scale]"
@@ -91,6 +106,6 @@ PY
     ;;
 
   *)
-    die "nieznana komenda '$CMD' (status|ping|selection|pages|variables|op|run|export)"
+    die "unknown command '$CMD' (status|ping|selection|pages|variables|op|run|export|image)"
     ;;
 esac

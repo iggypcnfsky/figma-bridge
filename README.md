@@ -68,7 +68,11 @@ After editing plugin files, re-run the plugin; manifest changes require a re-imp
   {"op":"createFrame","parentId":"12:34","name":"CTA","width":108,"height":36,"fill":"#6E56CF","props":{"cornerRadius":18,"layoutMode":"HORIZONTAL","primaryAxisAlignItems":"CENTER","counterAxisAlignItems":"CENTER"}}
 ]'
 ./bin/figma export 12:34 out/card.png PNG 2
+./bin/figma image 12:34 out/cover.png FILL     # obraz z dysku jako fill — bez uploadu do chmury
 ```
+
+Generated artwork pairs with [img-forge](../img-forge) (a sibling CLI over fal.ai):
+`img-forge gen … --out out/cover.png` then `./bin/figma image <nodeId> out/cover.png FILL`.
 
 Full parameter reference: [`docs/ops-reference.md`](docs/ops-reference.md).
 
