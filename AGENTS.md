@@ -106,8 +106,12 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
   and `x`/`y` are in the parent's coordinate space.
 - **`export` caps at 8 MB** — lower `scale` instead of retrying.
 - **`figma.currentPage` is the page open in the Figma window**, not a "last used" pointer.
-- **`documentAccess: "dynamic-page"`** — pages other than the current one require
-  `loadAllPagesAsync`; `find` with `allPages: true` does that for you.
+- **`documentAccess: "dynamic-page"`** — reading children of a page other than the current one
+  requires that page to be loaded. The bridge catches exactly that error, calls
+  `loadAllPagesAsync()` and retries the operation once, so you normally do not need to think about
+  it. For bulk lookups prefer `find` with `allPages: true` anyway.
+  Caveat: the retry is per operation — an `exec` that already changed something before throwing may
+  repeat part of its work.
 
 ## Repo layout
 

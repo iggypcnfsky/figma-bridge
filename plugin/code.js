@@ -487,6 +487,24 @@ const OPS = {
   },
 }
 
+// ------------------------------------------------------------ dynamic-page retry
+
+// W trybie `dynamic-page` Figma nie pozwala czytać dzieci stron, które nie zostały
+// jawnie wczytane. Zamiast zmuszać agenta do pamiętania o `loadAllPagesAsync`,
+// łapiemy dokładnie ten błąd, wczytujemy strony i powtarzamy operację raz.
+const DYNAMIC_PAGE_ERROR = /has not been explicitly loaded|loadAllPagesAsync/i
+
+async function withPageRetry(run) {
+  try {
+    return await run()
+  } catch (err) {
+    const message = String((err && err.message) || err)
+    if (!DYNAMIC_PAGE_ERROR.test(message)) throw err
+    await figma.loadAllPagesAsync()
+    return await run()
+  }
+}
+
 // ----------------------------------------------------------------- message loop
 
 figma.ui.onmessage = async (msg) => {
@@ -501,7 +519,7 @@ figma.ui.onmessage = async (msg) => {
     const handler = OPS[op.op]
     try {
       if (!handler) fail('unknown op "' + String(op.op) + '" — available: ' + Object.keys(OPS).join(', '))
-      const value = await handler(op)
+      const value = await withPageRetry(() => handler(op))
       results.push({ index: i, op: op.op, ok: true, value })
     } catch (err) {
       ok = false
@@ -512,7 +530,8 @@ figma.ui.onmessage = async (msg) => {
   }
 
   figma.ui.postMessage({ type: 'result', id: msg.id, ok, results, error })
-  if (!ok) figma.notify('Figma Bridge: ' + error, { error: true })
+  // Pełny błąd i tak wraca do agenta; w Figmie pokazujemy skrót, żeby toast nie zasłaniał płótna.
+  if (!ok) figma.notify('Figma Bridge: ' + String(error).slice(0, 120), { error: true })
 }
 
 figma.notify('Figma Bridge ready')
