@@ -13,8 +13,8 @@
   "scripts": {
     "start": "node server.mjs",
     "mock": "node scripts/mock-plugin.mjs",
-    "test": "node scripts/test-typography.mjs",
-    "check": "node --check server.mjs && node --check plugin/code.js && node --check scripts/mock-plugin.mjs && node -e \"JSON.parse(require('fs').readFileSync('plugin/manifest.json','utf8'))\" && node scripts/test-typography.mjs"
+    "test": "node scripts/test-typography.mjs && node scripts/test-serialisation.mjs",
+    "check": "node --check server.mjs && node --check plugin/code.js && node --check scripts/mock-plugin.mjs && node -e \"JSON.parse(require('fs').readFileSync('plugin/manifest.json','utf8'))\" && node scripts/test-typography.mjs && node scripts/test-serialisation.mjs"
   },
   "keywords": ["figma", "figma-plugin", "agent", "dsh", "design-to-code"],
   "license": "MIT"

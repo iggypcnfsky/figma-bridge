@@ -52,6 +52,12 @@ Several Figma windows may run the plugin at once. Each reports an id, file and p
 routes by them: a single window is used automatically, ambiguity returns `409` with the list instead of
 answering from the wrong file (`./bin/figma clients`, `--file`, `--client`).
 
+Several agents may also share one canvas. A window executes one batch at a time: the server marks it
+busy and hands it the next job only when the previous result is back, and the plugin queues batches as
+a second line of defence. Different windows are independent lanes. What the bridge cannot do is guess
+intent — reads still go stale between batches, and two agents writing the same node end with the last
+write winning, so partition by frame and keep batches short.
+
 ## Install
 
 Requires Node ≥ 20 and the Figma desktop app.

@@ -33,6 +33,10 @@ repo, and do not guess paths.
 - `503` from `/run` means the same thing. `504 PLUGIN_GONE` means they closed the plugin window.
 - `409` means several Figma windows are connected and none was chosen. Pick the file the user named
   (`--file <NAME>`) or a client id (`--client <ID>`); never retry blindly, or you may edit the wrong file.
+- Another agent may be working in the same file. Batches are serialised per window, so you will not
+  run inside each other — but your reads go stale between them, and the last write to a node wins.
+  Re-read before a write that depends on state, stay inside your own frame subtree, keep batches
+  short, and check `figma clients` (`busy: <job>`) before blaming your own operation for a change.
 
 ## The loop
 

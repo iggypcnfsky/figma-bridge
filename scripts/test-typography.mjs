@@ -88,11 +88,13 @@ const sandbox = { figma, __html__: '', console, Promise, setTimeout, JSON, Math,
 vm.createContext(sandbox)
 vm.runInContext(code, sandbox)
 
+// The plugin queues batches (one at a time), so the result arrives after the handler
+// resolves — wait for the postMessage instead of reading a variable right after it.
 async function run(ops) {
-  let result = null
-  figma.ui.postMessage = (msg) => { if (msg.type === 'result') result = msg }
-  await figma.ui.onmessage({ type: 'run', id: 'test', ops })
-  return result
+  return await new Promise((resolve) => {
+    figma.ui.postMessage = (msg) => { if (msg.type === 'result') resolve(msg) }
+    figma.ui.onmessage({ type: 'run', id: 'test', ops })
+  })
 }
 
 let failures = 0

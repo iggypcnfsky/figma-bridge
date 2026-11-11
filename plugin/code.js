@@ -1558,6 +1558,10 @@ async function uiFillSelection(msg) {
   figma.notify('Fill replaced')
 }
 
+// Jeden batch naraz. Iframe wznawia long-poll od razu po odebraniu zlecenia, więc bez tej
+// kolejki dwa agenty (albo dwa okna) mogłyby przeplatać swoje operacje w awaitach.
+let batchChain = Promise.resolve()
+
 figma.ui.onmessage = async (msg) => {
   if (!msg || typeof msg.type !== 'string') return
 
@@ -1571,6 +1575,10 @@ figma.ui.onmessage = async (msg) => {
   if (msg.type === 'fillSelection') return uiFillSelection(msg)
 
   if (msg.type !== 'run') return
+  batchChain = batchChain.then(() => runBatch(msg)).catch(() => {})
+}
+
+async function runBatch(msg) {
   const ops = Array.isArray(msg.ops) ? msg.ops : []
   const results = []
   let ok = true

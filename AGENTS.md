@@ -104,6 +104,37 @@ FIGMA_BRIDGE_FILE=ITHAKA ./bin/figma run '[…]'
   user means, or read the file name from their prompt, then pass `--file`;
 - `409` also when the named file is not connected or two windows are open on it (then use `--client`).
 
+## Several agents on one canvas
+
+Yes, and the bridge now keeps it honest. Two agents (or three) can post operations against the same
+Figma file; what they cannot do is run **inside each other's batch**.
+
+- A plugin window executes one batch at a time. The server hands it a job, marks the window busy and
+  dispatches the next one only when `/result` comes back; the plugin also queues `run` messages, so
+  even a direct double send cannot interleave two batches.
+- Different windows still run in parallel — they are separate lanes, which is why `--file`/`--client`
+  matter.
+- Image generation (`img gen` / the panel) does not occupy the canvas lane at all; only `/run` does.
+
+What is still yours to handle — the bridge cannot see intent:
+
+1. **Reads go stale between batches.** Another agent's batch may have changed the tree after your
+   `selection`/`node`. Re-read the node right before a write that depends on it, or verify by
+   re-reading after (the operations return ids, not state).
+2. **Same node, two agents = last write wins.** Partition by frame subtree, not by "I'll be quick".
+3. **⌘Z is per batch, not per agent.** The user's undo history interleaves your batches; long
+   sequences are harder to take back. Keep batches small.
+4. **A long batch blocks the other agents** on that window: the queue waits, and the CLI gives up
+   after `timeoutMs` (default 120 s). Do not run a `for` loop over 200 nodes inside one `exec`.
+
+```bash
+figma clients     # busy: <job id> while a window is executing a batch
+figma status      # "busy": [{client, job}]
+```
+
+If you need true isolation for a big build, ask the user to open the plugin in a second Figma window
+of the same file and target it with `--client`; the two lanes then work independently.
+
 ## Operations
 
 Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.md).

@@ -95,16 +95,37 @@ const pending = new Map()
  * @type {Map<string, {res: import('node:http').ServerResponse, timer: NodeJS.Timeout, info: {client: string, file: string|null, page: string|null, since: number}}>}
  */
 const waiters = new Map()
+/**
+ * A plugin window executes one batch at a time (Figma's JS is single-threaded and the ops await),
+ * but its iframe re-arms the long-poll the moment it receives a job. Without this map a second
+ * agent's batch was handed to the same window mid-run and the two interleaved at every await.
+ * client id → { job: id, since: ms }
+ * @type {Map<string, {job: string, since: number}>}
+ */
+const busy = new Map()
+/**
+ * Last time each window was seen, independent of whether it currently holds a long-poll.
+ * A window executing a long batch has no waiter left, and deriving "connected" from waiters
+ * alone made a busy window look gone: 409 for a run targeting it, `busy` missing from the list.
+ * client id → { file, page, since, lastSeen }
+ */
+const known = new Map()
+/** job id → client it was handed to, so /result can free exactly that window. */
+const dispatched = new Map()
 let lastPollAt = 0
 let connectedAt = null
 
 const clientsList = () =>
-  [...waiters.entries()].map(([client, entry]) => ({
-    client,
-    file: entry.info.file,
-    page: entry.info.page,
-    connectedSeconds: Math.round((Date.now() - entry.info.since) / 1000),
-  }))
+  [...known.entries()]
+    .filter(([client, info]) => busy.has(client) || Date.now() - info.lastSeen < DISCONNECT_GRACE_MS)
+    .map(([client, info]) => ({
+      client,
+      file: info.file,
+      page: info.page,
+      connectedSeconds: Math.round((Date.now() - info.since) / 1000),
+      waiting: waiters.has(client),
+      busy: busy.has(client) ? busy.get(client).job.slice(0, 8) : null,
+    }))
 
 const now = () => new Date().toISOString().slice(11, 23)
 const log = (...a) => console.log(`[bridge ${now()}]`, ...a)
@@ -172,16 +193,29 @@ function matches(entry, job) {
   return true
 }
 
+/** Frees a window after its batch finished, failed or timed out, then hands out the next job. */
+function releaseJob(jobId) {
+  const client = dispatched.get(jobId)
+  if (!client) return
+  dispatched.delete(jobId)
+  const entry = busy.get(client)
+  if (entry && entry.job === jobId) busy.delete(client)
+  dispatch()
+}
+
 function dispatch() {
   let progressed = true
   while (progressed && queue.length > 0 && waiters.size > 0) {
     progressed = false
     for (const [index, job] of queue.entries()) {
-      const chosen = [...waiters.entries()].find(([, entry]) => matches(entry, job))
+      // skip windows that are still executing: a batch must not start inside another batch
+      const chosen = [...waiters.entries()].find(([client, entry]) => matches(entry, job) && !busy.has(client))
       if (!chosen) continue
       const [client, entry] = chosen
       queue.splice(index, 1)
       waiters.delete(client)
+      busy.set(client, { job: job.id, since: Date.now() })
+      dispatched.set(job.id, client)
       clearTimeout(entry.timer)
       log(
         `→ job ${job.id.slice(0, 8)} (${job.ops.length} ops${job.dryRun ? ', dry-run' : ''}) to ${client}` +
@@ -294,13 +328,15 @@ function enqueueImageJob(body) {
 }
 
 function isConnected() {
-  return waiters.size > 0 || Date.now() - lastPollAt < DISCONNECT_GRACE_MS
+  return clientsList().length > 0
 }
 
 // If the plugin disappears mid-run, do not wait for the timeout — fail fast.
 setInterval(() => {
-  if (pending.size === 0 || waiters.size > 0) return
+  if (pending.size === 0 || waiters.size > 0 || busy.size > 0) return
   if (Date.now() - lastPollAt < DISCONNECT_GRACE_MS) return
+  busy.clear()
+  dispatched.clear()
   for (const [id, slot] of pending) {
     clearTimeout(slot.timer)
     pending.delete(id)
@@ -328,6 +364,7 @@ async function handle(req, res) {
       connectedSinceSeconds: connectedAt ? Math.round((Date.now() - connectedAt) / 1000) : null,
       queued: queue.length,
       inFlight: pending.size,
+      busy: [...busy.entries()].map(([client, entry]) => ({ client, job: entry.job.slice(0, 8), ms: Date.now() - entry.since })),
       waitingJobs: [...pending.keys()].map((k) => k.slice(0, 8)),
     })
   }
@@ -338,6 +375,13 @@ async function handle(req, res) {
     const file = url.searchParams.get('file')
     const page = url.searchParams.get('page')
     lastPollAt = Date.now()
+    const seen = known.get(client)
+    known.set(client, {
+      file: file || (seen && seen.file) || null,
+      page: page || (seen && seen.page) || null,
+      since: seen ? seen.since : Date.now(),
+      lastSeen: Date.now(),
+    })
     if (connectedAt === null) {
       connectedAt = Date.now()
       log('plugin connected')
@@ -379,6 +423,7 @@ async function handle(req, res) {
     if (!slot) return json(res, 404, { error: 'unknown or expired job id' })
     clearTimeout(slot.timer)
     pending.delete(body.id)
+    releaseJob(body.id)
     log(`← job ${String(body.id).slice(0, 8)} ${body.ok ? 'ok' : 'FAIL'}`)
     slot.resolve(body)
     return json(res, 200, { ok: true })
@@ -533,6 +578,7 @@ async function handle(req, res) {
     const result = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id)
+        releaseJob(id)
         reject(
           Object.assign(new Error(`plugin did not respond within ${timeoutMs} ms`), {
             code: 'PLUGIN_TIMEOUT',
@@ -551,6 +597,7 @@ async function handle(req, res) {
     } catch (err) {
       const idx = queue.findIndex((j) => j.id === id)
       if (idx !== -1) queue.splice(idx, 1)
+      releaseJob(id)
       return json(res, 504, { error: err.message, code: err.code ?? 'ERROR', id })
     }
   }
