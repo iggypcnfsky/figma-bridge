@@ -83,6 +83,7 @@
         touch-action: none; cursor: crosshair; display: block; background: #000; margin: 0 auto; }
       #maskRow #maskInfo { font-size: 10px; opacity: .75; }
       #brushSize { width: 90px; }
+      #maskPick { flex: 1 1 auto; min-width: 0; }
       #maskList { display: flex; flex-direction: column; gap: 4px; }
       #maskList:empty { display: none; }
       .mask { display: grid; grid-template-columns: 34px 1fr auto; gap: 3px 6px; align-items: center;
@@ -163,6 +164,10 @@
           <input type="checkbox" id="combineMasks" /> combine masks into one call (cheaper, less exact)
         </label>
         <div id="maskEditor" class="hidden">
+          <div class="row">
+            <select id="maskPick" title="which mask you are painting"></select>
+            <button id="maskNew" title="start another mask in a new colour">+ new</button>
+          </div>
           <div class="row">
             <input id="brushSize" type="range" min="4" max="120" value="32" />
             <button id="maskErase" title="Erase (E)">Erase</button>
@@ -599,6 +604,7 @@
         $('maskInfo').textContent = state.masks.length === 0
           ? 'no masks'
           : state.masks.length + (state.masks.length === 1 ? ' mask' : ' masks')
+        renderMaskPicker()
       }
 
       function addMask(base64, width, height, editId) {
@@ -650,9 +656,54 @@
         image.src = 'data:image/png;base64,' + mask.base64
       }
 
+      // Widok cudzej maski w jej kolorze — żeby podczas malowania było widać, gdzie są pozostałe.
+      async function colouriseMask(mask, width, height) {
+        const image = await loadImage('data:image/png;base64,' + mask.base64)
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(image, 0, 0, width, height)
+        const pixels = ctx.getImageData(0, 0, width, height)
+        const rgb = hexToRgb(mask.color)
+        for (let i = 0; i < pixels.data.length; i += 4) {
+          const on = pixels.data[i] > 128
+          pixels.data[i] = rgb.r
+          pixels.data[i + 1] = rgb.g
+          pixels.data[i + 2] = rgb.b
+          pixels.data[i + 3] = on ? 255 : 0
+        }
+        ctx.putImageData(pixels, 0, 0)
+        return canvas
+      }
+
+      function renderMaskPicker() {
+        const select = $('maskPick')
+        if (!select) return
+        select.textContent = ''
+        for (const mask of state.masks) {
+          const option = document.createElement('option')
+          option.value = mask.id
+          option.textContent = mask.name + ' (' + mask.color + ')'
+          select.append(option)
+        }
+        if (state.maskEditingId) select.value = state.maskEditingId
+        else {
+          const option = document.createElement('option')
+          option.value = '__new__'
+          option.textContent = 'new mask (' + (state.maskBase ? state.maskBase.color : nextMaskColor()) + ')'
+          select.append(option)
+          select.value = '__new__'
+        }
+      }
+
       async function openMaskEditor(editId) {
         const ref = primaryRef()
         if (!ref) return log('add a reference first — the mask is painted over it')
+        if (state.maskDirty) {
+          state.maskDirty = false
+          log('switched masks — unsaved strokes in the previous one were dropped')
+        }
         const image = await loadImage('data:image/png;base64,' + ref.base64)
         const naturalWidth = Math.round(ref.width || image.naturalWidth)
         const naturalHeight = Math.round(ref.height || image.naturalHeight)
@@ -670,11 +721,22 @@
           naturalWidth,
           naturalHeight,
           color: editing ? editing.color : nextMaskColor(),
+          others: [],
+        }
+        // pozostałe maski pokazujemy przygaszone w ich kolorach — łatwiej trafić w sąsiedni obszar
+        for (const other of state.masks) {
+          if (other.id === editId) continue
+          try {
+            state.maskBase.others.push(await colouriseMask(other, naturalWidth, naturalHeight))
+          } catch {
+            /* pomijamy maskę, której nie da się wczytać */
+          }
         }
         state.maskEditingId = editId || null
         state.maskErase = false
         $('maskErase').classList.remove('on')
         $('maskEditor').classList.remove('hidden')
+        renderMaskPicker()
         sizeMaskView()
         if (editing) seedOverlayFromMask(editing)
         log(editing
@@ -710,6 +772,11 @@
         const ctx = base.canvas.getContext('2d')
         ctx.clearRect(0, 0, base.canvas.width, base.canvas.height)
         ctx.drawImage(base.image, 0, 0, base.canvas.width, base.canvas.height)
+        if (base.others && base.others.length) {
+          ctx.globalAlpha = 0.3
+          for (const other of base.others) ctx.drawImage(other, 0, 0, base.canvas.width, base.canvas.height)
+          ctx.globalAlpha = 1
+        }
         ctx.globalAlpha = 0.55
         ctx.drawImage(base.maskCanvas, 0, 0, base.canvas.width, base.canvas.height)
         ctx.globalAlpha = 1
@@ -730,6 +797,7 @@
         ctx.beginPath()
         ctx.arc(nx * base.maskCanvas.width, ny * base.maskCanvas.height, radius, 0, Math.PI * 2)
         ctx.fill()
+        state.maskDirty = true
         redrawMask()
       }
 
@@ -761,6 +829,7 @@
         octx.putImageData(image, 0, 0)
         const editId = state.maskEditingId
         const mask = addMask(out.toDataURL('image/png').split(',')[1], width, height, editId)
+        state.maskDirty = false
         closeMaskEditor()
         log((editId ? 'updated ' + mask.name : 'added ' + mask.name) + ' at ' + width + '×' + height + ' · ' +
           Math.round((painted / (width * height)) * 100) + '% of the area will change')
@@ -1294,6 +1363,11 @@
 
       $('combineMasks').onchange = () => updateCost()
       $('paintMask').onclick = () => openMaskEditor().catch((err) => log('mask: ' + err.message))
+      $('maskNew').onclick = () => openMaskEditor().catch((err) => log('mask: ' + err.message))
+      $('maskPick').onchange = () => {
+        const value = $('maskPick').value
+        openMaskEditor(value === '__new__' ? undefined : value).catch((err) => log('mask: ' + err.message))
+      }
       $('maskFromSel').onclick = () => {
         state.maskFromSelection = true
         toPlugin({ type: 'exportSelection' })
