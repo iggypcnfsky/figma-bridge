@@ -596,8 +596,18 @@ figma.ui.onmessage = async (msg) => {
     return
   }
   if (msg.type === 'setToken') {
-    await figma.clientStorage.setAsync(STORE_TOKEN, String(msg.token || ''))
-    figma.notify('Token saved')
+    const value = String(msg.token || '')
+    try {
+      await figma.clientStorage.setAsync(STORE_TOKEN, value)
+      // Zapis może się nie utrzymać (dev-plugin bez stabilnego id), więc czytamy z powrotem
+      // i mówimy wprost, czy token przetrwa kolejne uruchomienie.
+      const readBack = await figma.clientStorage.getAsync(STORE_TOKEN)
+      const durable = readBack === value
+      figma.notify(durable ? 'Token saved (persists across runs)' : 'Token applied for this session only')
+      figma.ui.postMessage({ type: 'tokenSaved', durable })
+    } catch (err) {
+      figma.ui.postMessage({ type: 'tokenSaved', durable: false, error: err.message })
+    }
     return
   }
   if (msg.type === 'selectionInfo') return uiSelectionInfo()

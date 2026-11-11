@@ -138,6 +138,11 @@ node scripts/mock-plugin.mjs &      # simulates the plugin
   `networkAccess`.
 - No tokens or OAuth: there is nothing in a config file worth stealing, and permissions are
   whatever that editing session already has.
+- CORS is **not** `*`: only the plugin iframe (`Origin: null`) and local tools without an Origin get an
+  allow header, so a web page you visit cannot POST money-spending jobs to localhost.
+- The image endpoints additionally require the bridge token; it lives in `figma.clientStorage`, which
+  Figma may reset for a dev plugin without an assigned `id` — the panel says whether the token is
+  durable or session-only after you save it.
 - `exec` runs arbitrary JS inside the plugin sandbox. That is deliberate — it is what makes the
   bridge a full Plugin API — but an agent that is careless can do more to a file than intended.
   Figma's own undo (⌘Z) is the safety net.

@@ -90,12 +90,20 @@ let connectedAt = null
 const now = () => new Date().toISOString().slice(11, 23)
 const log = (...a) => console.log(`[bridge ${now()}]`, ...a)
 
+function corsHeaders(res) {
+  // * pozwalał dowolnej stronie WWW wywołać endpoint wydający pieniądze.
+  // Iframe pluginu wysyła Origin: null, curl nie wysyła go wcale.
+  const origin = res.dsOrigin
+  const allow = origin === 'null' ? 'null' : origin ? null : '*'
+  return allow ? { 'access-control-allow-origin': allow } : {}
+}
+
 function json(res, status, body) {
   const text = JSON.stringify(body)
   res.writeHead(status, {
+    ...corsHeaders(res),
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(text),
-    'access-control-allow-origin': '*',
     'access-control-allow-headers': 'content-type, x-bridge-token',
     'access-control-allow-methods': 'GET,POST,OPTIONS',
     'cache-control': 'no-store',
@@ -105,7 +113,7 @@ function json(res, status, body) {
 
 function empty(res, status = 204) {
   res.writeHead(status, {
-    'access-control-allow-origin': '*',
+    ...corsHeaders(res),
     'access-control-allow-headers': 'content-type, x-bridge-token',
     'access-control-allow-methods': 'GET,POST,OPTIONS',
     'cache-control': 'no-store',
@@ -265,6 +273,7 @@ setInterval(() => {
 }, 1_000).unref()
 
 async function handle(req, res) {
+  res.dsOrigin = req.headers.origin || null
   const url = new URL(req.url, `http://${HOST}:${PORT}`)
   const path = url.pathname
 

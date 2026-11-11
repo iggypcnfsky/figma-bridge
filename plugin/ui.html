@@ -168,6 +168,10 @@
           }).catch(() => {})
           return
         }
+        if (msg.type === 'tokenSaved') {
+          log(msg.durable ? 'token saved — survives restarts' : 'token for this session only (Figma dev storage reset)')
+          return
+        }
         if (msg.type === 'token') {
           state.token = msg.token || null
           $('tokenRow').classList.toggle('hidden', Boolean(state.token))
