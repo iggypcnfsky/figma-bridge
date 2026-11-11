@@ -101,7 +101,9 @@ chips (`1:1@1k`, `16:9@2k`, `9:16@1080`), and the cost estimate is shown before 
 - **Insert on canvas** drops the image as a plain rectangle with an image fill at the viewport centre —
   a picture on the canvas, not nested inside a frame.
 - **Fill selection** applies it as a fill to whatever is selected.
-- **Edit** uses the current selection as the reference (`exportAsync` → server → `img edit`).
+- **Edit** uses the current selection as the reference (`exportAsync` → server → `img edit`); picking a
+  reference adds a preset chip with its exact dimensions and selects it, so the result keeps the
+  reference's size instead of re-cropping it to a fixed aspect.
 - The bridge token is asked once and kept in `figma.clientStorage`.
 
 ## Image generation endpoint

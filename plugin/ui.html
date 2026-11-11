@@ -106,7 +106,7 @@
 
     <script>
       const BASE = 'http://localhost:3847'
-      const PRESETS = ['1:1@1024', '16:9@2k', '9:16@1080']
+      const BASE_PRESETS = ['1:1@1024', '16:9@2k', '9:16@1080']
       const COLLAPSED = { width: 232, height: 34 }
       const EXPANDED = { width: 360, height: 604 }
 
@@ -175,8 +175,15 @@
           return
         }
         if (msg.type === 'selectionImage') {
+          if (msg.error) {
+            log('reference: ' + msg.error)
+            return
+          }
           state.ref = msg
           $('refInfo').textContent = msg.width + '×' + msg.height + ' from selection'
+          // dopasuj wyjście do referencji: to jest sens edycji istniejącego obrazka
+          state.preset = 'selection'
+          renderChips()
           updateCost()
           return
         }
@@ -259,12 +266,41 @@
 
       // ---------------------------------------------------------------- koszt
       function dimsFromPreset(preset) {
+        if (preset === 'selection' && state.ref) {
+          return { width: Math.round(state.ref.width), height: Math.round(state.ref.height) }
+        }
         const [aspect, res] = preset.split('@')
         const [a, b] = aspect.split(':').map(Number)
         const long = /k$/i.test(res) ? parseFloat(res) * 1024 : Number(res)
         return a >= b
           ? { width: Math.round(long), height: Math.round((long * b) / a) }
           : { width: Math.round((long * a) / b), height: Math.round(long) }
+      }
+
+      function presetList() {
+        return state.ref ? ['selection', ...BASE_PRESETS] : [...BASE_PRESETS]
+      }
+
+      function renderChips() {
+        const chips = $('presets')
+        chips.innerHTML = ''
+        for (const preset of presetList()) {
+          const button = document.createElement('button')
+          if (preset === 'selection') {
+            button.textContent = state.ref.width + '×' + state.ref.height
+            button.title = 'match the size of the reference'
+          } else {
+            button.textContent = preset.replace('@', ' @')
+          }
+          button.className = preset === state.preset ? 'on' : ''
+          button.onclick = () => {
+            state.preset = preset
+            for (const other of chips.children) other.classList.remove('on')
+            button.classList.add('on')
+            updateCost()
+          }
+          chips.appendChild(button)
+        }
       }
 
       function updateCost() {
@@ -325,12 +361,14 @@
         log('queued')
         try {
           const dims = dimsFromPreset(state.preset)
+          const sizeFlag = state.preset === 'selection'
+            ? { size: dims.width + 'x' + dims.height }
+            : { preset: state.preset }
           const payload = {
             mode: state.mode,
             model: $('model').value,
             prompt,
-            preset: state.preset,
-            sizing: dims,
+            ...sizeFlag,
             reasoning: $('reasoning').value || undefined,
             quality: $('quality').value || undefined,
             confirmCost: true,
@@ -420,19 +458,7 @@
       }
 
       // ------------------------------------------------------------------ start
-      const chips = $('presets')
-      for (const preset of PRESETS) {
-        const button = document.createElement('button')
-        button.textContent = preset.replace('@', ' @')
-        button.className = preset === state.preset ? 'on' : ''
-        button.onclick = () => {
-          state.preset = preset
-          for (const other of chips.children) other.classList.remove('on')
-          button.classList.add('on')
-          updateCost()
-        }
-        chips.appendChild(button)
-      }
+      renderChips()
 
       toPlugin({ type: 'resize', width: COLLAPSED.width, height: COLLAPSED.height })
       toPlugin({ type: 'getToken' })

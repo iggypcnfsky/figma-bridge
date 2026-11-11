@@ -96,7 +96,7 @@ function json(res, status, body) {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(text),
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type',
+    'access-control-allow-headers': 'content-type, x-bridge-token',
     'access-control-allow-methods': 'GET,POST,OPTIONS',
     'cache-control': 'no-store',
   })
@@ -106,7 +106,7 @@ function json(res, status, body) {
 function empty(res, status = 204) {
   res.writeHead(status, {
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type',
+    'access-control-allow-headers': 'content-type, x-bridge-token',
     'access-control-allow-methods': 'GET,POST,OPTIONS',
     'cache-control': 'no-store',
   })
@@ -329,6 +329,10 @@ async function handle(req, res) {
 
   // --- zlecenie od agenta ------------------------------------------------
   // --- obrazy (fal przez img-forge) ---------------------------------------
+  if (path.startsWith('/image/')) {
+    const authorised = String(req.headers['x-bridge-token'] || '') === BRIDGE_TOKEN
+    log(`image ${req.method} ${path} token=${authorised ? 'ok' : 'BAD'}`)
+  }
   if (req.method === 'GET' && path === '/image/models') {
     if (!requireToken(req, res)) return
     try {
