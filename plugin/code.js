@@ -512,8 +512,6 @@ async function withPageRetry(run) {
 
 // ----------------------------------------------------------------- message loop
 
-const STORE_TOKEN = 'figmaBridgeToken'
-
 // --- panel obrazów ---------------------------------------------------------
 async function uiSelectionInfo() {
   const selection = figma.currentPage.selection
@@ -588,26 +586,6 @@ figma.ui.onmessage = async (msg) => {
 
   if (msg.type === 'resize') {
     figma.ui.resize(Math.round(Number(msg.width) || 232), Math.round(Number(msg.height) || 34))
-    return
-  }
-  if (msg.type === 'getToken') {
-    const stored = await figma.clientStorage.getAsync(STORE_TOKEN)
-    figma.ui.postMessage({ type: 'token', token: typeof stored === 'string' ? stored : null })
-    return
-  }
-  if (msg.type === 'setToken') {
-    const value = String(msg.token || '')
-    try {
-      await figma.clientStorage.setAsync(STORE_TOKEN, value)
-      // Zapis może się nie utrzymać (dev-plugin bez stabilnego id), więc czytamy z powrotem
-      // i mówimy wprost, czy token przetrwa kolejne uruchomienie.
-      const readBack = await figma.clientStorage.getAsync(STORE_TOKEN)
-      const durable = readBack === value
-      figma.notify(durable ? 'Token saved (persists across runs)' : 'Token applied for this session only')
-      figma.ui.postMessage({ type: 'tokenSaved', durable })
-    } catch (err) {
-      figma.ui.postMessage({ type: 'tokenSaved', durable: false, error: err.message })
-    }
     return
   }
   if (msg.type === 'selectionInfo') return uiSelectionInfo()

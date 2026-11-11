@@ -51,7 +51,6 @@
       #go { padding: 7px; font-weight: 600; }
       #log { font-size: 10px; opacity: .75; max-height: 46px; overflow: auto; white-space: pre-wrap; }
       #preview { width: 100%; border-radius: 6px; border: 1px solid var(--figma-color-border, #ddd); background: #000; }
-      #tokenRow input { flex: 1; }
       #refInfo { font-size: 10px; opacity: .75; }
     </style>
   </head>
@@ -98,10 +97,6 @@
         </div>
       </div>
 
-      <div class="row hidden" id="tokenRow">
-        <input id="token" placeholder="bridge token — run: ./bin/figma token" />
-        <button id="saveToken">Save</button>
-      </div>
     </div>
 
     <script>
@@ -114,7 +109,6 @@
       const dot = $('dot')
       const statusEl = $('status')
       const state = {
-        token: null,
         models: {},
         schema: null,
         mode: 'gen',
@@ -168,16 +162,6 @@
           }).catch(() => {})
           return
         }
-        if (msg.type === 'tokenSaved') {
-          log(msg.durable ? 'token saved — survives restarts' : 'token for this session only (Figma dev storage reset)')
-          return
-        }
-        if (msg.type === 'token') {
-          state.token = msg.token || null
-          $('tokenRow').classList.toggle('hidden', Boolean(state.token))
-          if (state.token) loadModels()
-          return
-        }
         if (msg.type === 'selectionImage') {
           if (msg.error) {
             log('reference: ' + msg.error)
@@ -202,12 +186,9 @@
       async function api(path, options = {}) {
         const res = await fetch(BASE + path, {
           ...options,
-          headers: { 'content-type': 'application/json', 'x-bridge-token': state.token || '', ...(options.headers || {}) },
+          headers: { 'content-type': 'application/json', ...(options.headers || {}) },
         })
-        if (res.status === 401) {
-          $('tokenRow').classList.remove('hidden')
-          throw new Error('token required')
-        }
+        if (res.status === 403) throw new Error('blocked: this request did not come from the plugin')
         const body = await res.json()
         if (!res.ok) throw new Error(body.error || 'HTTP ' + res.status)
         return body
@@ -415,8 +396,7 @@
         const size = state.expanded ? EXPANDED : COLLAPSED
         toPlugin({ type: 'resize', width: size.width, height: size.height })
         if (state.expanded) {
-          if (!state.token) $('tokenRow').classList.remove('hidden')
-          else if (!Object.keys(state.models).length) loadModels()
+          if (!Object.keys(state.models).length) loadModels()
           toPlugin({ type: 'selectionInfo' })
         }
       }
@@ -452,20 +432,10 @@
         log('applied to selection')
       }
 
-      $('saveToken').onclick = () => {
-        const token = $('token').value.trim()
-        if (!token) return
-        state.token = token
-        toPlugin({ type: 'setToken', token })
-        $('tokenRow').classList.add('hidden')
-        loadModels().catch((err) => log(err.message))
-      }
-
       // ------------------------------------------------------------------ start
       renderChips()
 
       toPlugin({ type: 'resize', width: COLLAPSED.width, height: COLLAPSED.height })
-      toPlugin({ type: 'getToken' })
       bridgeLoop()
     </script>
   </body>

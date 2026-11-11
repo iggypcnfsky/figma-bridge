@@ -27,30 +27,19 @@ const MAX_BODY_BYTES = 32 * 1024 * 1024
 // CLI, so the API key stays on the machine and the Figma manifest stays localhost-only.
 const HERE = dirname(fileURLToPath(import.meta.url))
 const IMG_FORGE_BIN = process.env.IMG_FORGE_BIN || join(HERE, '..', 'img-forge', 'img')
-const TOKEN_FILE = join(HERE, '.bridge-token')
 const JOB_DIR = join(HERE, 'out', 'jobs')
 const IMAGE_JOB_TTL_MS = 30 * 60 * 1000
+const IMAGE_MAX_USD = Number(process.env.IMAGE_MAX_USD || 0.5)
 
-function loadToken() {
-  if (existsSync(TOKEN_FILE)) {
-    const existing = readFileSync(TOKEN_FILE, 'utf8').trim()
-    if (existing) return existing
-  }
-  mkdirSync(dirname(TOKEN_FILE), { recursive: true })
-  const token = randomBytes(24).toString('hex')
-  writeFileSync(TOKEN_FILE, token + '\n')
-  chmodSync(TOKEN_FILE, 0o600)
-  return token
+// Bez tokena (jest zbędny: FAL_KEY i tak leży na dysku, więc lokalny proces może go przeczytać).
+// Zamiast tego twardo odrzucamy żądania z obcym Origin — to broni przed stroną WWW,
+// która próbowałaby wydać Twoje pieniądze z przeglądarki.
+function foreignOrigin(req) {
+  const origin = req.headers.origin
+  return Boolean(origin) && origin !== 'null'
 }
-const BRIDGE_TOKEN = loadToken()
+
 const imageJobs = new Map()
-
-function requireToken(req, res) {
-  const given = String(req.headers['x-bridge-token'] || '')
-  if (given.length === BRIDGE_TOKEN.length && given === BRIDGE_TOKEN) return true
-  json(res, 401, { error: 'missing or invalid x-bridge-token (run: ./bin/figma token)' })
-  return false
-}
 
 /** Runs the img-forge CLI and resolves with its --json payload. */
 function runImgForge(args, onLog) {
@@ -176,7 +165,7 @@ function imageArgs(body, refPaths) {
   if (body.mask) args.push('--mask', String(body.mask))
   if (body.dryRun) args.push('--dry-run')
   if (body.confirmCost) args.push('--yes')
-  if (body.maxUsd !== undefined) args.push('--max-usd', String(body.maxUsd))
+  args.push('--max-usd', String(body.maxUsd !== undefined ? body.maxUsd : IMAGE_MAX_USD))
   return args
 }
 
@@ -339,11 +328,13 @@ async function handle(req, res) {
   // --- zlecenie od agenta ------------------------------------------------
   // --- obrazy (fal przez img-forge) ---------------------------------------
   if (path.startsWith('/image/')) {
-    const authorised = String(req.headers['x-bridge-token'] || '') === BRIDGE_TOKEN
-    log(`image ${req.method} ${path} token=${authorised ? 'ok' : 'BAD'}`)
+    if (foreignOrigin(req)) {
+      log(`image ${req.method} ${path} BLOCKED origin=${req.headers.origin}`)
+      return json(res, 403, { error: 'this endpoint only accepts the Figma plugin (Origin: null)' })
+    }
+    log(`image ${req.method} ${path}`)
   }
   if (req.method === 'GET' && path === '/image/models') {
-    if (!requireToken(req, res)) return
     try {
       const registry = await runImgForge(['models', '--json'])
       return json(res, 200, { ok: true, ...registry })
@@ -353,7 +344,6 @@ async function handle(req, res) {
   }
 
   if (req.method === 'GET' && path === '/image/schema') {
-    if (!requireToken(req, res)) return
     const model = url.searchParams.get('model')
     if (!model) return json(res, 400, { error: 'pass ?model=<endpoint-id>' })
     try {
@@ -365,7 +355,6 @@ async function handle(req, res) {
   }
 
   if (req.method === 'POST' && path === '/image/jobs') {
-    if (!requireToken(req, res)) return
     let body
     try {
       body = await readBody(req)
@@ -381,7 +370,6 @@ async function handle(req, res) {
   }
 
   if (req.method === 'GET' && path.startsWith('/image/jobs/')) {
-    if (!requireToken(req, res)) return
     const id = path.slice('/image/jobs/'.length)
     const job = imageJobs.get(id)
     if (!job) return json(res, 404, { error: 'unknown or expired job' })

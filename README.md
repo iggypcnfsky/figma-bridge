@@ -112,16 +112,17 @@ The server also fronts [img-forge](../img-forge), the fal.ai CLI, so a Figma pan
 without ever seeing the API key:
 
 ```bash
-./bin/figma token                    # one secret, kept out of git (0.6xx, 0600)
-curl -H "x-bridge-token: $TOKEN" localhost:3847/image/models
-curl -X POST -H "x-bridge-token: $TOKEN" -H 'content-type: application/json' \
+curl localhost:3847/image/models
+curl -X POST -H 'content-type: application/json' \
      -d '{"mode":"edit","prompt":"recolor to green","refs":[{"filename":"a.png","base64":"…"}]}' \
      localhost:3847/image/jobs
-curl -H "x-bridge-token: $TOKEN" localhost:3847/image/jobs/<id>
+curl localhost:3847/image/jobs/<id>
 ```
 
-`/image/models`, `/image/schema`, `/image/jobs` require the token — they spend money. Canvas
-operations (`/run`) remain token-free because they only touch the open document.
+There is no token: the key already lives on disk, so a local process could read it anyway. The
+protection that actually matters is origin-scoped CORS plus a hard 403 for any request carrying a
+foreign `Origin`, so a website you visit cannot spend your credits. Every job also passes
+`--max-usd` (default `$0.5`, override with `IMAGE_MAX_USD`).
 
 ## Testing without Figma
 
@@ -140,9 +141,8 @@ node scripts/mock-plugin.mjs &      # simulates the plugin
   whatever that editing session already has.
 - CORS is **not** `*`: only the plugin iframe (`Origin: null`) and local tools without an Origin get an
   allow header, so a web page you visit cannot POST money-spending jobs to localhost.
-- The image endpoints additionally require the bridge token; it lives in `figma.clientStorage`, which
-  Figma may reset for a dev plugin without an assigned `id` — the panel says whether the token is
-  durable or session-only after you save it.
+- Image jobs run through `img-forge`, which enforces a cost ceiling before any network call
+  (`--max-usd`, default `$0.5` via `IMAGE_MAX_USD`).
 - `exec` runs arbitrary JS inside the plugin sandbox. That is deliberate — it is what makes the
   bridge a full Plugin API — but an agent that is careless can do more to a file than intended.
   Figma's own undo (⌘Z) is the safety net.
