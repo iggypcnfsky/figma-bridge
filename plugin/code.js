@@ -18,6 +18,11 @@ function sendIdentity() {
 
 sendIdentity()
 figma.on('currentpagechange', sendIdentity)
+// Panel trzyma „Use selection” wyłączone, dopóki nie wie o zaznaczeniu — a wiedziało tylko
+// w momencie rozwinięcia. Teraz każde kliknięcie na płótnie odświeża ten przycisk.
+figma.on('selectionchange', () => {
+  uiSelectionInfo().catch(() => {})
+})
 
 // -------------------------------------------------------------------- helpers
 
