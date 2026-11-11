@@ -1435,6 +1435,9 @@ const OPS = {
       fail('Figma rejected this SVG: ' + (err && err.message ? err.message : String(err)))
     }
     const scaled = fitSvgNode(node, width, height)
+    // Ramka-otoczka nie ma tła: SVG z Quivera jest przezroczysty, a Figma ustawia jej biały fill.
+    // Kolory siedzą w dzieciach (ścieżkach), więc czyścimy tylko rodzica.
+    try { node.fills = [] } catch { /* nie każda ramka przyjmuje fills */ }
     if (name) node.name = String(name).slice(0, 120)
     if (Number.isFinite(Number(x)) && Number.isFinite(Number(y))) {
       node.x = Number(x)

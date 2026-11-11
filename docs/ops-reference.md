@@ -506,7 +506,9 @@ Returns `{ id, imageHash, bytes }`.
 | `select` | `true` | select the node and scroll to it |
 
 Places **real vectors**, not an image: `figma.createNodeFromSvg` builds a frame whose children are the
-paths, so fills and strokes stay editable. Returns `{ id, name, type, width, height, scaled }`.
+paths, so fills and strokes stay editable. The wrapper frame is created **without a fill**, so a
+transparent SVG stays transparent on the canvas (Figma otherwise gives the frame a white background).
+Returns `{ id, name, type, width, height, scaled }`.
 
 ```bash
 figma op '{"op":"createFromSvg","svg":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"10\"/></svg>","width":48,"height":48}'

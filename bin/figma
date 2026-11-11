@@ -217,7 +217,8 @@ PY2
     ;;
 
   export)
-    NODE="${1:-}"; OUT="${2:-}"; FMT="${3:-PNG}"; SCALE="${4:-2}"    [ -n "$NODE" ] && [ -n "$OUT" ] || die "usage: figma export <nodeId> <file.png> [PNG|JPG|SVG|PDF] [scale]"
+    NODE="${1:-}"; OUT="${2:-}"; FMT="${3:-PNG}"; SCALE="${4:-2}"
+    [ -n "$NODE" ] && [ -n "$OUT" ] || die "usage: figma export <nodeId> <file.png> [PNG|JPG|SVG|PDF] [scale]"
     post_run "[{\"op\":\"export\",\"nodeId\":\"$NODE\",\"format\":\"$FMT\",\"scale\":$SCALE}]" > /tmp/figma-export.json
     python3 - "$OUT" <<'PY'
 import json, sys, base64

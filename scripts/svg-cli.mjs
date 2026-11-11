@@ -121,11 +121,17 @@ async function main() {
   }
   const started = await api('/svg/jobs', { method: 'POST', body: JSON.stringify(payload) })
   let job = started
+  let printed = 0
   const deadline = Date.now() + 5 * 60_000
   while ((job.status === 'queued' || job.status === 'running') && Date.now() < deadline) {
     await sleep(1500)
     job = await api('/svg/jobs/' + started.id)
-    if (job.log && job.log.length && !options.json) console.error('· ' + job.log[job.log.length - 1])
+    // log joba jest przyrostowy, ale poll zwraca całość — drukujemy tylko nowe linie
+    const lines = job.log || []
+    if (!options.json) {
+      for (const line of lines.slice(printed)) console.error('· ' + line)
+      printed = Math.max(printed, lines.length)
+    }
   }
   if (job.status !== 'done') throw new Error(job.error || 'job did not finish (' + job.status + ')')
 
