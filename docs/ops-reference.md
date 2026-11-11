@@ -247,6 +247,37 @@ Returns `{ spacing, ordered }` with the nodes already moved. `gap` is the space 
 | `blur` | shortcut: `{ type: "LAYER" \| "BACKGROUND", radius: 12 }` |
 | `clear` | `true` removes every effect |
 
+## constraints
+
+| parameter | meaning |
+|---|---|
+| `nodeId` | node |
+| `horizontal` | `MIN` `CENTER` `MAX` `STRETCH` `SCALE` |
+| `vertical` | same values |
+
+Call with no axis to read the current constraints. Only meaningful for children of a frame that is
+**not** auto-layout — an auto-layout child is governed by `sizing` instead.
+
+## sizing
+
+Responsive behaviour in one call; every write is attempted independently and reported.
+
+| parameter | values |
+|---|---|
+| `horizontal`, `vertical` | `HUG` (fit content), `FILL` (stretch in the parent), `FIXED` |
+| `minWidth`, `maxWidth`, `minHeight`, `maxHeight` | numbers, or `null` to clear |
+| `grow` | `0` / `1` — legacy fill of the remaining space |
+| `align` | `INHERIT` / `STRETCH` |
+| `absolute` | `true` positions the node absolutely inside auto-layout |
+
+Returns `{ applied, skipped, read }` — `skipped` carries Figma's reason for a property that does not
+apply to that node type or context, so a partial success is never silent.
+
+```bash
+./bin/figma op '{"op":"sizing","nodeId":"12:34","horizontal":"FILL","vertical":"HUG"}'
+./bin/figma run '[{"op":"constraints","nodeId":"12:34","horizontal":"STRETCH","vertical":"MAX"}]'
+```
+
 ## gradient
 
 | parameter | default | meaning |

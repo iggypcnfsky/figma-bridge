@@ -145,6 +145,15 @@ function summary(node, depth, opts) {
     base.layoutMode = node.layoutMode
     base.itemSpacing = node.itemSpacing
   }
+  if ('constraints' in node) base.constraints = node.constraints
+  if ('layoutSizingHorizontal' in node) {
+    base.layoutSizing = { horizontal: node.layoutSizingHorizontal, vertical: node.layoutSizingVertical }
+  }
+  if ('layoutPositioning' in node && node.layoutPositioning !== 'AUTO') base.layoutPositioning = node.layoutPositioning
+  if ('layoutAlign' in node && node.layoutAlign !== 'INHERIT') base.layoutAlign = node.layoutAlign
+  for (const key of ['minWidth', 'maxWidth', 'minHeight', 'maxHeight']) {
+    if (key in node && node[key] !== null && node[key] !== undefined) base[key] = node[key]
+  }
   if ('fills' in node && Array.isArray(node.fills)) base.fills = node.fills.map(paintLabel)
   if (depth > 0 && Array.isArray(node.children)) {
     base.children = node.children.slice(0, maxChildren).map((c) => summary(c, depth - 1, opts))
@@ -650,6 +659,75 @@ const OPS = {
     if (!Array.isArray(next)) fail('pass effects[] or shadow{} or blur{}')
     node.effects = next
     return { id: node.id, effects: node.effects }
+  },
+
+  async constraints({ nodeId, horizontal, vertical } = {}) {
+    const node = await getNode(nodeId)
+    if (!('constraints' in node)) fail(node.type + ' has no constraints')
+    const allowed = ['MIN', 'CENTER', 'MAX', 'STRETCH', 'SCALE']
+    if (!horizontal && !vertical) return { id: node.id, constraints: node.constraints }
+    const next = { ...node.constraints }
+    for (const [axis, value] of [['horizontal', horizontal], ['vertical', vertical]]) {
+      if (!value) continue
+      const normalized = String(value).toUpperCase()
+      if (!allowed.includes(normalized)) fail(`${axis} must be one of ${allowed.join(' | ')}`)
+      next[axis] = normalized
+    }
+    node.constraints = next
+    return { id: node.id, constraints: node.constraints }
+  },
+
+  /** layoutSizing (HUG/FILL/FIXED), min/max, layoutAlign, layoutGrow, absolute positioning. */
+  async sizing({
+    nodeId,
+    horizontal,
+    vertical,
+    minWidth,
+    maxWidth,
+    minHeight,
+    maxHeight,
+    grow,
+    align,
+    absolute,
+  } = {}) {
+    const node = await getNode(nodeId)
+    const applied = []
+    const skipped = []
+    const attempt = (field, action) => {
+      try {
+        action()
+        applied.push(field)
+      } catch (err) {
+        skipped.push({ field, reason: err.message })
+      }
+    }
+    const sizing = (value) => {
+      const normalized = String(value).toUpperCase()
+      if (!['HUG', 'FILL', 'FIXED'].includes(normalized)) fail('layoutSizing must be HUG | FILL | FIXED')
+      return normalized
+    }
+
+    if (horizontal) attempt('layoutSizingHorizontal', () => { node.layoutSizingHorizontal = sizing(horizontal) })
+    if (vertical) attempt('layoutSizingVertical', () => { node.layoutSizingVertical = sizing(vertical) })
+    if (grow !== undefined) attempt('layoutGrow', () => { node.layoutGrow = Number(grow) ? 1 : 0 })
+    if (align) attempt('layoutAlign', () => { node.layoutAlign = String(align).toUpperCase() })
+    if (absolute !== undefined) attempt('layoutPositioning', () => { node.layoutPositioning = absolute ? 'ABSOLUTE' : 'AUTO' })
+    for (const [field, value] of [['minWidth', minWidth], ['maxWidth', maxWidth], ['minHeight', minHeight], ['maxHeight', maxHeight]]) {
+      if (value === undefined) continue
+      attempt(field, () => { node[field] = value === null ? null : Number(value) })
+    }
+
+    return {
+      id: node.id,
+      applied,
+      skipped,
+      read: {
+        layoutSizing: 'layoutSizingHorizontal' in node ? { horizontal: node.layoutSizingHorizontal, vertical: node.layoutSizingVertical } : null,
+        layoutAlign: 'layoutAlign' in node ? node.layoutAlign : null,
+        layoutGrow: 'layoutGrow' in node ? node.layoutGrow : null,
+        layoutPositioning: 'layoutPositioning' in node ? node.layoutPositioning : null,
+      },
+    }
   },
 
   async gradient({ nodeId, kind = 'linear', angle = 90, stops, opacity = 1, visible = true } = {}) {

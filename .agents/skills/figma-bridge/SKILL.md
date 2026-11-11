@@ -63,6 +63,9 @@ Design-work shortcuts worth knowing:
   — angle 0 is left → right, 90 is top → bottom. Never fake a gradient with stacked rectangles.
 - **design system**: `createInstance` with a `COMPONENT` id, and `applyStyle` by style name; do not
   redraw what the library already ships.
+- **responsive**: `sizing` sets `HUG`/`FILL`/`FIXED` per axis plus min/max; `constraints` covers
+  non-auto-layout children (`STRETCH`/`MIN`/`MAX`/`CENTER`/`SCALE`). Read both from `node` before
+  changing them — `sizing` returns `skipped` with Figma's reason when a property does not apply.
 
 ## Images
 
