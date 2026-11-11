@@ -32,6 +32,14 @@ except Exception:
 }
 
 case "$CMD" in
+  token)
+    # sekret dla /image/* — panel w Figmie podaje go raz i trzyma w clientStorage
+    if [ ! -f .bridge-token ]; then
+      python3 -c "import secrets,pathlib; p=pathlib.Path('.bridge-token'); p.write_text(secrets.token_hex(24)+chr(10)); p.chmod(0o600)"
+    fi
+    cat .bridge-token
+    ;;
+
   status|health)
     curl -sS "$BASE/status" | pretty
     ;;
@@ -106,6 +114,6 @@ PY
     ;;
 
   *)
-    die "unknown command '$CMD' (status|ping|selection|pages|variables|op|run|export|image)"
+    die "unknown command '$CMD' (status|token|ping|selection|pages|variables|op|run|export|image)"
     ;;
 esac

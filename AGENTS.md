@@ -62,6 +62,13 @@ Response `200` (all good) or `500` (an operation failed):
 
 `GET /status` → `{ ok, pluginConnected, pollPending, lastPollAt, queued, inFlight }`.
 
+Image generation (optional, requires a FAL_KEY and the sibling `img-forge` CLI):
+
+- `GET /image/models`, `GET /image/schema?model=…`, `POST /image/jobs`, `GET /image/jobs/:id`
+- all four need the `x-bridge-token` header; get the secret with `./bin/figma token`
+- a job spawns `img-forge` and returns `{status, log, result:{file, base64, width, height}}`
+- if you can run the CLI directly, do that instead — the endpoint exists for the Figma panel.
+
 ## Operations
 
 Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.md).

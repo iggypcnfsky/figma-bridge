@@ -92,6 +92,23 @@ DSH discovers skills from `<repo>/.agents/skills` (project), `~/.dsh/skills` and
 (global) and watches those directories, so a new skill appears without a restart. Verify with
 `skill figma-bridge`.
 
+## Image generation endpoint
+
+The server also fronts [img-forge](../img-forge), the fal.ai CLI, so a Figma panel can generate images
+without ever seeing the API key:
+
+```bash
+./bin/figma token                    # one secret, kept out of git (0.6xx, 0600)
+curl -H "x-bridge-token: $TOKEN" localhost:3847/image/models
+curl -X POST -H "x-bridge-token: $TOKEN" -H 'content-type: application/json' \
+     -d '{"mode":"edit","prompt":"recolor to green","refs":[{"filename":"a.png","base64":"…"}]}' \
+     localhost:3847/image/jobs
+curl -H "x-bridge-token: $TOKEN" localhost:3847/image/jobs/<id>
+```
+
+`/image/models`, `/image/schema`, `/image/jobs` require the token — they spend money. Canvas
+operations (`/run`) remain token-free because they only touch the open document.
+
 ## Testing without Figma
 
 ```bash
