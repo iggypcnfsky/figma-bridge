@@ -138,7 +138,7 @@ Click `⌃` in the status bar. The window expands to `360×668` with two tabs.
 | **reasoning / quality** | populated from that model's **OpenAPI schema**, so the dropdowns can only offer values the endpoint accepts; a model without the field hides it |
 | **Use selection / Add image…** | references for Edit: the selected frame (exported at 2×) or files from disk, as many as you drop; thumbnails with ✕ to drop one |
 | **Paint mask… / From selection** | constrain the edit to an area: paint over the reference with the brush (erase with `E`), or turn a white-on-black frame into a mask |
-| **The corner grip** | drag it to resize the window (double-click resets); the preview and the mask canvas grow with it, and the size is remembered |
+| **Corner grips** | any of the four corners drags the window (double-click resets); the preview and the mask canvas grow with it, and the size is remembered |
 | **Prompt** | text; for Edit this describes the change |
 | **Size chips** | `1:1 @1024`, `16:9 @2k`, `9:16 @1080`, saved presets, and — in Edit — a chip with the reference's exact dimensions |
 | **W × H + Use** | any size between 64 and 8192 px; the active chip becomes those pixels |

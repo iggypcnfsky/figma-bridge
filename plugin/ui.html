@@ -40,12 +40,20 @@
 
       /* panel */
       #panel { padding: 0 8px 8px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
-      #grip { position: fixed; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize;
-        background: linear-gradient(135deg, transparent 46%, var(--figma-color-border-strong, #999) 46%,
-          var(--figma-color-border-strong, #999) 54%, transparent 54%, transparent 68%,
-          var(--figma-color-border-strong, #999) 68%, var(--figma-color-border-strong, #999) 76%, transparent 76%);
-        opacity: .55; z-index: 5; }
-      #grip:hover { opacity: 1; }
+      /* uchwyty we wszystkich rogach; okno rośnie od lewego górnego, więc „do wewnątrz = mniej”
+         działa tak samo dla każdego rogu */
+      .grip { position: fixed; width: 16px; height: 16px; z-index: 5; opacity: .4; }
+      .grip::before { content: ''; position: absolute; width: 9px; height: 9px; border-style: solid;
+        border-width: 0; border-color: var(--figma-color-border-strong, #999); }
+      .grip[data-corner='tl'] { top: 0; left: 0; cursor: nwse-resize; }
+      .grip[data-corner='tl']::before { top: 2px; left: 2px; border-top-width: 2px; border-left-width: 2px; }
+      .grip[data-corner='tr'] { top: 0; right: 0; cursor: nesw-resize; }
+      .grip[data-corner='tr']::before { top: 2px; right: 2px; border-top-width: 2px; border-right-width: 2px; }
+      .grip[data-corner='bl'] { bottom: 0; left: 0; cursor: nesw-resize; }
+      .grip[data-corner='bl']::before { bottom: 2px; left: 2px; border-bottom-width: 2px; border-left-width: 2px; }
+      .grip[data-corner='br'] { bottom: 0; right: 0; cursor: nwse-resize; }
+      .grip[data-corner='br']::before { bottom: 2px; right: 2px; border-bottom-width: 2px; border-right-width: 2px; }
+      .grip:hover { opacity: 1; }
       .tabs { display: flex; gap: 4px; }
       .tabs button { flex: 1; }
       .tabs button.on { background: var(--figma-color-bg-brand, #0d99ff); color: #fff; border-color: transparent; }
@@ -207,7 +215,10 @@
 
     </div>
 
-    <div id="grip" class="hidden" title="Drag to resize · double-click to reset"></div>
+    <div class="grip hidden" data-corner="tl" title="Drag to resize · double-click to reset"></div>
+    <div class="grip hidden" data-corner="tr" title="Drag to resize · double-click to reset"></div>
+    <div class="grip hidden" data-corner="bl" title="Drag to resize · double-click to reset"></div>
+    <div class="grip hidden" data-corner="br" title="Drag to resize · double-click to reset"></div>
 
     <script>
       const BASE = 'http://localhost:3847'
@@ -950,7 +961,7 @@
         $('panel').classList.toggle('hidden', !state.expanded)
         $('toggle').style.transform = state.expanded ? 'rotate(180deg)' : 'none'
         const size = state.expanded ? state.panelSize : COLLAPSED
-        $('grip').classList.toggle('hidden', !state.expanded)
+        for (const grip of document.querySelectorAll('.grip')) grip.classList.toggle('hidden', !state.expanded)
         toPlugin({ type: 'resize', width: size.width, height: size.height })
         if (state.expanded) {
           if (!Object.keys(state.models).length) loadModels()
@@ -1007,47 +1018,62 @@
       $('addRef').onclick = () => $('refFile').click()
 
       // ------------------------------------------------------------ rozmiar okna
+      // figma.ui.resize zaczepia okno w lewym górnym roku ekranu, więc uchwyt w każdym rogu
+      // liczy rozmiar „do wewnątrz = mniej / na zewnątrz = więcej”, a nie przesuwa okna.
       let drag = null
       const clampSize = (size) => ({
         width: Math.min(MAX_SIZE.width, Math.max(MIN_SIZE.width, Math.round(size.width))),
         height: Math.min(MAX_SIZE.height, Math.max(MIN_SIZE.height, Math.round(size.height))),
       })
-      $('grip').onpointerdown = (event) => {
-        event.preventDefault()
-        drag = {
-          startX: event.clientX,
-          startY: event.clientY,
-          width: window.innerWidth,
-          height: window.innerHeight,
-          frame: 0,
+
+      for (const grip of document.querySelectorAll('.grip')) {
+        const corner = grip.dataset.corner
+        const signX = corner === 'tr' || corner === 'br' ? 1 : -1
+        const signY = corner === 'bl' || corner === 'br' ? 1 : -1
+
+        grip.onpointerdown = (event) => {
+          event.preventDefault()
+          drag = {
+            corner,
+            signX,
+            signY,
+            startX: event.clientX,
+            startY: event.clientY,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            next: null,
+            frame: 0,
+          }
+          grip.setPointerCapture(event.pointerId)
         }
-        $('grip').setPointerCapture(event.pointerId)
-      }
-      $('grip').onpointermove = (event) => {
-        if (!drag) return
-        drag.next = clampSize({
-          width: drag.width + (event.clientX - drag.startX),
-          height: drag.height + (event.clientY - drag.startY),
-        })
-        if (drag.frame) return
-        // throttle: jedno resize na klatkę, inaczej przeciąganie zamula iframe
-        drag.frame = requestAnimationFrame(() => {
+
+        grip.onpointermove = (event) => {
+          if (!drag || drag.corner !== corner) return
+          drag.next = clampSize({
+            width: drag.width + signX * (event.clientX - drag.startX),
+            height: drag.height + signY * (event.clientY - drag.startY),
+          })
+          if (drag.frame) return
+          // throttle: jedno resize na klatkę, inaczej przeciąganie zamula iframe
+          drag.frame = requestAnimationFrame(() => {
+            if (!drag) return
+            drag.frame = 0
+            toPlugin({ type: 'resize', width: drag.next.width, height: drag.next.height })
+          })
+        }
+
+        grip.onpointerup = () => {
           if (!drag) return
-          drag.frame = 0
-          toPlugin({ type: 'resize', width: drag.next.width, height: drag.next.height })
-        })
-      }
-      $('grip').onpointerup = () => {
-        if (!drag) return
-        drag = null
-        state.panelSize = clampSize({ width: window.innerWidth, height: window.innerHeight })
-        savePanelSize(state.panelSize)
-      }
-      $('grip').onpointercancel = () => { drag = null }
-      $('grip').ondblclick = () => {
-        state.panelSize = { ...EXPANDED }
-        savePanelSize(state.panelSize)
-        toPlugin({ type: 'resize', width: EXPANDED.width, height: EXPANDED.height })
+          drag = null
+          state.panelSize = clampSize({ width: window.innerWidth, height: window.innerHeight })
+          savePanelSize(state.panelSize)
+        }
+        grip.onpointercancel = () => { drag = null }
+        grip.ondblclick = () => {
+          state.panelSize = { ...EXPANDED }
+          savePanelSize(state.panelSize)
+          toPlugin({ type: 'resize', width: EXPANDED.width, height: EXPANDED.height })
+        }
       }
 
       $('paintMask').onclick = () => openMaskEditor().catch((err) => log('mask: ' + err.message))
