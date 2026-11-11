@@ -57,7 +57,10 @@ Design-work shortcuts worth knowing:
   fake a grid with rectangles.
 - **rows of items**: build them, then `{"op":"align","nodeIds":[…],"mode":"TOP"}` and
   `{"op":"distribute","nodeIds":[…],"axis":"HORIZONTAL","gap":24}`.
-- **depth**: `{"op":"effects","nodeId":"…","shadow":{"y":8,"blur":24,"color":"#00000033"}}`.
+- **depth**: `{"op":"effects","nodeId":"…","shadow":{"y":8,"blur":24,"color":"#00000033"}}` or
+  `{"op":"effects","nodeId":"…","blur":{"type":"BACKGROUND","radius":20}}`.
+- **gradients**: `{"op":"gradient","nodeId":"…","kind":"linear","angle":135,"stops":[[0,"#8B76FF"],[1,"#0E0E12"]]}`
+  — angle 0 is left → right, 90 is top → bottom. Never fake a gradient with stacked rectangles.
 - **design system**: `createInstance` with a `COMPONENT` id, and `applyStyle` by style name; do not
   redraw what the library already ships.
 

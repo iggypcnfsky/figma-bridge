@@ -98,7 +98,7 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
 | Read | `selection`, `node`, `find` |
 | Create | `createFrame`, `createRect`, `createEllipse`, `createText`, `createPage`, `createInstance` |
 | Modify | `update`, `clone`, `reparent`, `remove`, `goto`, `group`, `ungroup`, `select` |
-| Layout | `grids`, `setGrids`, `align`, `distribute`, `effects` |
+| Layout | `grids`, `setGrids`, `align`, `distribute`, `effects`, `gradient` |
 | Styles | `styles`, `applyStyle`, `varFill` |
 | Assets | `export` (base64 → file), `imageFill` (base64 → fill) |
 | Full API | `exec` — arbitrary JS with `figma` in scope |

@@ -622,7 +622,7 @@ const OPS = {
     return { spacing: round(spacing), ordered: nodes.map((n) => n.id) }
   },
 
-  async effects({ nodeId, effects, shadow, clear = false } = {}) {
+  async effects({ nodeId, effects, shadow, blur, clear = false } = {}) {
     const node = await getNode(nodeId)
     if (!('effects' in node)) fail(node.type + ' has no effects')
     if (clear) {
@@ -630,6 +630,10 @@ const OPS = {
       return { id: node.id, effects: [] }
     }
     let next = effects
+    if (!next && blur) {
+      const type = String(blur.type || 'LAYER').toUpperCase() === 'BACKGROUND' ? 'BACKGROUND_BLUR' : 'LAYER_BLUR'
+      next = [{ type, radius: Number(blur.radius === undefined ? 12 : blur.radius), visible: true }]
+    }
     if (!next && shadow) {
       next = [
         {
@@ -643,9 +647,49 @@ const OPS = {
         },
       ]
     }
-    if (!Array.isArray(next)) fail('pass effects[] or shadow{}')
+    if (!Array.isArray(next)) fail('pass effects[] or shadow{} or blur{}')
     node.effects = next
     return { id: node.id, effects: node.effects }
+  },
+
+  async gradient({ nodeId, kind = 'linear', angle = 90, stops, opacity = 1, visible = true } = {}) {
+    const node = await getNode(nodeId)
+    if (!('fills' in node)) fail(node.type + ' has no fills')
+    const types = {
+      linear: 'GRADIENT_LINEAR',
+      radial: 'GRADIENT_RADIAL',
+      angular: 'GRADIENT_ANGULAR',
+      diamond: 'GRADIENT_DIAMOND',
+    }
+    const type = types[String(kind).toLowerCase()]
+    if (!type) fail('kind must be linear | radial | angular | diamond')
+
+    const list = Array.isArray(stops) && stops.length >= 2 ? stops : [[0, '#FFFFFF'], [1, '#000000']]
+    const parsed = list.map((entry) => {
+      const [position, hex] = Array.isArray(entry) ? entry : [entry.position, entry.color]
+      return { position: Number(position), color: rgba(hex) }
+    })
+    if (parsed.some((stop) => Number.isNaN(stop.position))) fail('stop positions must be numbers 0..1')
+
+    // Obrót wokół środka: kolejność wierszy i znak kąta to konwencja Figmy (0° = od lewej do prawej).
+    const rad = (Number(angle) * Math.PI) / 180
+    const cos = Math.cos(rad)
+    const sin = Math.sin(rad)
+    const gradientTransform = [
+      [cos, sin, 0.5 - 0.5 * cos - 0.5 * sin],
+      [-sin, cos, 0.5 + 0.5 * sin - 0.5 * cos],
+    ]
+
+    node.fills = [
+      {
+        type,
+        gradientTransform,
+        gradientStops: parsed,
+        opacity: Number(opacity),
+        visible: visible !== false,
+      },
+    ]
+    return { id: node.id, type, angle: Number(angle), stops: parsed.length }
   },
 
   async createInstance({ componentId, parentId, x, y } = {}) {

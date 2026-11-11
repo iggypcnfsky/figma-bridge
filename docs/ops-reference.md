@@ -244,7 +244,27 @@ Returns `{ spacing, ordered }` with the nodes already moved. `gap` is the space 
 | `nodeId` | node |
 | `effects` | raw Figma effects array (`DROP_SHADOW`, `INNER_SHADOW`, `LAYER_BLUR`, `BACKGROUND_BLUR`) |
 | `shadow` | shortcut: `{ x: 0, y: 4, blur: 12, spread: 0, color: "#00000040" }` |
+| `blur` | shortcut: `{ type: "LAYER" \| "BACKGROUND", radius: 12 }` |
 | `clear` | `true` removes every effect |
+
+## gradient
+
+| parameter | default | meaning |
+|---|---|---|
+| `nodeId` | — (required) | node with fills |
+| `kind` | `linear` | `linear` `radial` `angular` `diamond` |
+| `angle` | `90` | degrees, clockwise; **0 = left → right**, 90 = top → bottom |
+| `stops` | white → black | `[[0, "#8B76FF"], [1, "#0E0E12"]]`, or `[{ position, color }]` |
+| `opacity` | `1` | paint opacity |
+| `visible` | `true` | |
+
+```bash
+./bin/figma op '{"op":"gradient","nodeId":"12:34","kind":"linear","angle":135,
+                 "stops":[[0,"#8B76FF"],[0.55,"#3B2E8C"],[1,"#0E0E12"]]}'
+```
+
+Replaces the node's fills with that gradient (one paint). To keep a fill underneath, add it afterwards
+with `update` — `fills` accepts raw paint objects as well as hex strings.
 
 ## createInstance
 
