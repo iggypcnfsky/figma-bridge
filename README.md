@@ -130,10 +130,12 @@ Without a key the panel still loads, and a job fails with a readable message in 
 
 ### The panel
 
-Click `⌃` in the status bar. The window expands to `360×668` with two tabs.
+Click `⌃` in the status bar. The window expands to `360×720` with four tabs — Generate, Edit, Jobs
+and Agents.
 
 | Control | What it does |
 |---|---|
+| **Image / Vector** | what Generate makes: a raster image through fal, or real SVG paths through QuiverAI (see [Vector generation](#vector-generation-quiverai)) |
 | **Model** | populated from `GET /image/models` (a small registry in `img-forge/models.json`) |
 | **reasoning / quality** | populated from that model's **OpenAPI schema**, so the dropdowns can only offer values the endpoint accepts; a model without the field hides it |
 | **Use selection / Add selection / Add image…** | references for Edit: *Use selection* makes the selected frame the base (exported at 2×, sets the output size), *Add selection* appends another canvas selection as `#image2`, `#image3`…, *Add image…* takes files from disk; 100 px thumbnails with the file name underneath, ✕ to drop one |
@@ -253,6 +255,79 @@ Jobs run one at a time and expire after 30 minutes.
 `--mask` / `--markup` for inpainting, `num_images > 1`, raw `--set` for model-specific knobs,
 `--dry-run` payload inspection, and the spend log (`img-forge spend`). The panel is a convenience
 layer; the CLI is the full surface.
+
+## Vector generation (QuiverAI)
+
+**Generate → Vector** makes artwork, not pixels: you write a prompt (or attach up to 14 reference
+images) and get an SVG that lands on the canvas as **editable vectors** — `figma.createNodeFromSvg`
+builds a frame whose children are the actual paths, so fills, strokes and boolean ops stay workable.
+
+**Prerequisites**
+
+- a QuiverAI API key from <https://platform.quiver.ai/api-keys> (the API Platform, not the App — they
+  bill separately, from a prepaid balance),
+- `QUIVERAI_API_KEY` in `figma-bridge/.env` (copy `.env.example`) or in the environment,
+- restart the bridge, then `figma svg doctor` — it prints the key state and the models your key can
+  actually call.
+
+The key never reaches the plugin: the panel posts a job to `localhost`, the server calls
+`api.quiver.ai`, and the manifest still only knows `localhost`.
+
+### In the panel
+
+| Control | What it does |
+|---|---|
+| **Image / Vector** | switches Generate between fal (raster) and QuiverAI (SVG) |
+| **Vector model** | from `GET /v1/models`, filtered to models whose `supported_operations` include `svg_generate` (or `svg_vectorize` in trace mode) |
+| **Trace the first reference** | vectorizes the first reference as it is — Quiver's vectorization takes no prompt, so the textarea is disabled while it is on |
+| **Use selection / Add image…** | the same reference row as Edit; in Vector mode these guide generation instead of being edited |
+| **Prompt** | what to draw: subject, style, palette, composition ("minimal line-art fox, two colours, no background"). In trace mode it is ignored |
+| **Size (W × H)** | only used when you place the result; leave both empty and the SVG keeps its own proportions |
+| **Generate vector** | posts `/svg/jobs`, polls it, shows the log and the exact charge when it lands |
+| **Insert on canvas** | the SVG as vector nodes; every finished vector job is auto-inserted once, like images |
+| **Fill selection** | hidden for vectors — an image fill needs a raster |
+
+A finished job is a real `<svg>`: the preview renders it on a white background, the Jobs tab keeps the
+prompt and references of that run, and reopening it recreates exactly the inputs it used.
+
+### Limits and billing
+
+QuiverAI accepts an input image up to **12 MB decoded**, **4096 px per side** and **16.7 M pixels**.
+The panel downscales larger references with a canvas before sending (the log says so); the server
+refuses anything still over the line **before** the request, so a too-big reference never costs money.
+
+Billing is per token, not per image (`$4/1M` input, `$20/1M` output for Arrow 2). Rates come from
+`/v1/models`, so the panel shows the charge only after the run — the log line reads
+`usage 1.2k in / 7.8k out · $0.0088`. A typical icon or logo is a few cents; complex illustrations
+cost more. `SVG_CONCURRENCY` (default 2) caps parallel vector jobs.
+
+### CLI
+
+```bash
+figma svg models                                    # what this key can call
+figma svg doctor                                    # key + catalog health
+figma svg gen "minimal line-art fox, two colours" --out out/fox.svg
+figma svg gen "logo mark for a coffee brand" --ref mood.png --insert
+figma svg trace logo.png --insert                   # raster → paths, no prompt
+figma svg gen "…" --width 512 --height 512 --insert # placed at a given size
+```
+
+`--insert` goes through the same `createFromSvg` operation an agent would use, so the result is a
+normal layer named `Bridge / SVG — …`. Without `--insert` you just get the `.svg` file (default
+`out/svg-<job>.svg`).
+
+### HTTP API
+
+All vector endpoints reject foreign `Origin` (403), like the image ones.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /svg/models` | catalog, per-model operations and token rates, `usable.generate` / `usable.vectorize` |
+| `GET /svg/doctor` | key present? catalog reachable? |
+| `POST /svg/jobs` | `{mode: "generate"\|"vectorize", model, prompt, refs:[{filename,base64}]}` → `{id}` |
+| `GET /svg/jobs/:id` | `{status, log, result:{svg, width, height, usage, cost, model}}` |
+
+Jobs expire after an hour; references and the finished `result.svg` stay in `out/jobs/<id>` until then.
 
 ## Agent skill
 

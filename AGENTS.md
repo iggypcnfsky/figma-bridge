@@ -20,7 +20,7 @@ agent ──HTTP──▶ server.mjs (localhost:3847) ◀──long-poll── p
 command works from any directory:
 
 ```bash
-figma doctor     # repo path, server state, connected Figma windows, img-forge + FAL key
+figma doctor     # repo path, server state, connected Figma windows, img-forge + FAL key, QuiverAI key
 figma rules      # this project's constraints: type floor, grid, frame size, version naming
 ```
 
@@ -50,6 +50,8 @@ starting the server yourself.
 ./bin/figma run '[{"op":"…"},{"op":"…"}]'  # a batch of operations
 ./bin/figma export <nodeId> <file> [PNG|JPG|SVG|PDF] [scale]
 ./bin/figma image <nodeId> <file> [FILL|FIT|TILE|CROP]   # image file → fill, no cloud upload
+./bin/figma svg gen "prompt" [--ref f.png] [--out x.svg] [--insert]   # QuiverAI → real vectors
+./bin/figma svg trace logo.png [--insert]                # raster → paths
 ```
 
 `FIGMA_BRIDGE_URL` overrides the address (default `http://127.0.0.1:3847`).
@@ -104,6 +106,29 @@ Image generation (optional; needs a `FAL_KEY` and the sibling CLI,
   job reproduces its inputs (last 15 runs kept; the payload itself lives on the server for 30 min)
 - if you can run the CLI directly, do that instead — the endpoint exists for the Figma panel,
   which humans use from the plugin window (Generate / Edit tabs, insert-as-rectangle or fill)
+
+Vector generation (optional; needs a QuiverAI key — <https://platform.quiver.ai/api-keys>) puts real
+SVG paths on the canvas instead of pixels. `QUIVERAI_API_KEY` goes in `figma-bridge/.env` (gitignored;
+`.env.example` shows the shape) or the environment — never in the manifest, which still only knows
+`localhost`. `figma doctor` reports whether the key is present.
+
+- `GET /svg/models` — catalog, each model's `supported_operations` (`svg_generate`, `svg_vectorize`)
+  and token rates; `usable.generate` / `usable.vectorize` list what this key can call
+- `POST /svg/jobs` `{mode: "generate"|"vectorize", model, prompt, refs: [{filename, base64}], …}` and
+  `GET /svg/jobs/:id` → `{status, log, result:{svg, width, height, usage, cost, model}}`
+- `generate` designs something new; up to 14 references guide it (no `#imageN` placeholders — Quiver
+  takes images, not names, so say what each reference is in the prompt). `vectorize` ("trace" in the
+  panel) takes the **first** reference and converts it to paths; it ignores the prompt
+- one run returns one SVG string, which `createFromSvg` turns into editable Figma vectors
+- input limits, checked before the request: ≤ 12 MB decoded, ≤ 4096 px per side, ≤ 16.7 M pixels per
+  reference. The panel downscales big references itself; the server rejects what is still too large
+- billing is per token, not per image: `usage` comes back with the result and the server multiplies it
+  by the rates from `/svg/models` → `result.cost` in USD. A run typically costs a few cents
+- `/status` adds `svg: {running, queued, concurrency, configured}`, `SVG_CONCURRENCY` defaults to 2
+- CLI: `figma svg models|doctor|gen|trace`, e.g.
+  `figma svg gen "minimal line-art fox" --out out/fox.svg --insert` or
+  `figma svg trace logo.png --insert`. `--insert` places it as real vectors, `--out` keeps the SVG
+- prefer the CLI over the HTTP endpoints; the endpoints exist for the panel
 
 ## Several Figma windows at once
 
@@ -183,7 +208,7 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
 | Layout | `grids`, `setGrids`, `align`, `distribute`, `constraints`, `sizing`, `effects`, `gradient` |
 | Measure/place | `measure`, `placeNear` |
 | Styles | `styles`, `saveStyle`, `applyStyle`, `varFill` |
-| Assets | `export` (base64 → file), `imageFill` (base64 → fill) |
+| Assets | `export` (base64 → file), `imageFill` (base64 → fill), `createFromSvg` (SVG → vector nodes) |
 | Full API | `exec` — arbitrary JS with `figma` in scope |
 
 ## Rules
@@ -267,6 +292,9 @@ figma-bridge/
   scripts/test-serialisation.mjs ← one batch per window, parallel windows
   scripts/test-agents.mjs ← agent registry: two agents, busy, mint, rename, forget
   scripts/test-image-job.mjs ← dry-run edit job: two refs + mask reach the payload
+  scripts/test-svg-job.mjs ← QuiverAI stub: refs, trace, validation, cost
+  scripts/svg-cli.mjs  ← `figma svg …` (generate, trace, insert)
+  lib/quiver.mjs       ← QuiverAI client: key, catalog, generate, vectorize, token cost
   scripts/demo-build.sh / make-demo-gif.py ← reproduce the demo GIF
   out/                 ← exports (gitignored)
 ```

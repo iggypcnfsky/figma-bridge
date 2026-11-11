@@ -5,3 +5,5 @@ out/
 out/jobs/
 presets.json
 rules.json
+.env
+.env.local

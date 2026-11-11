@@ -127,6 +127,12 @@ for entry in clients:
     else
       echo "missing (image generation unavailable)"
     fi
+    printf 'quiver:    '
+    if [ -n "${QUIVERAI_API_KEY:-}" ] || grep -q '^QUIVERAI_API_KEY=' "$REPO/.env" 2>/dev/null; then
+      echo "key set (vector generation available)"
+    else
+      echo "key MISSING — add QUIVERAI_API_KEY=... to $REPO/.env"
+    fi
     ;;
 
   status|health)
@@ -200,9 +206,18 @@ PY2
       --data-binary @/tmp/figma-image-payload.json | pretty
     ;;
 
+  svg)
+    # Generowanie i wektoryzacja przez QuiverAI; całe zarządzanie zleceniem (w tym --insert)
+    # siedzi w scripts/svg-cli.mjs, żeby nie sklejać JSON-a w bashu.
+    SVG_ARGS=(--repo "$REPO" --base "$BASE" --agent "$AGENT")
+    [ -n "$AGENT_LABEL" ] && SVG_ARGS+=(--label "$AGENT_LABEL")
+    [ -n "$TARGET_FILE" ] && SVG_ARGS+=(--file "$TARGET_FILE")
+    [ -n "$TARGET_CLIENT" ] && SVG_ARGS+=(--client "$TARGET_CLIENT")
+    exec node "$REPO/scripts/svg-cli.mjs" "${SVG_ARGS[@]}" "$@"
+    ;;
+
   export)
-    NODE="${1:-}"; OUT="${2:-}"; FMT="${3:-PNG}"; SCALE="${4:-2}"
-    [ -n "$NODE" ] && [ -n "$OUT" ] || die "usage: figma export <nodeId> <file.png> [PNG|JPG|SVG|PDF] [scale]"
+    NODE="${1:-}"; OUT="${2:-}"; FMT="${3:-PNG}"; SCALE="${4:-2}"    [ -n "$NODE" ] && [ -n "$OUT" ] || die "usage: figma export <nodeId> <file.png> [PNG|JPG|SVG|PDF] [scale]"
     post_run "[{\"op\":\"export\",\"nodeId\":\"$NODE\",\"format\":\"$FMT\",\"scale\":$SCALE}]" > /tmp/figma-export.json
     python3 - "$OUT" <<'PY'
 import json, sys, base64
@@ -218,6 +233,6 @@ PY
     ;;
 
   *)
-    die "unknown command '$CMD' (status|clients|where|doctor|rules|ping|selection|pages|variables|op|run|export|image)"
+    die "unknown command '$CMD' (status|clients|where|doctor|rules|ping|selection|pages|variables|op|run|export|image|svg)"
     ;;
 esac

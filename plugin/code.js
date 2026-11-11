@@ -1420,6 +1420,37 @@ const OPS = {
     return { id: n.id, imageHash: image.hash, bytes: bytes.length }
   },
 
+  // Wektor z QuiverAI (albo dowolny SVG) → prawdziwe wektory w Figmie, nie obrazek w ramce.
+  // `createNodeFromSvg` zwraca ramkę z kształtami w środku, więc można ją skalować i rozgrupować.
+  async createFromSvg({ svg, x, y, width, height, name, select = true } = {}) {
+    if (!svg || typeof svg !== 'string' || !svg.trim()) fail('svg markup is required')
+    // Quiver czasem pomija xmlns; bez niego createNodeFromSvg potrafi zwrócić pustą ramkę.
+    const markup = /<svg\b[^>]*\sxmlns\s*=/i.test(svg)
+      ? svg
+      : svg.replace(/<svg\b/i, '<svg xmlns="http://www.w3.org/2000/svg"')
+    let node
+    try {
+      node = figma.createNodeFromSvg(markup)
+    } catch (err) {
+      fail('Figma rejected this SVG: ' + (err && err.message ? err.message : String(err)))
+    }
+    const scaled = fitSvgNode(node, width, height)
+    if (name) node.name = String(name).slice(0, 120)
+    if (Number.isFinite(Number(x)) && Number.isFinite(Number(y))) {
+      node.x = Number(x)
+      node.y = Number(y)
+    } else {
+      const center = figma.viewport.center
+      node.x = Math.round(center.x - node.width / 2)
+      node.y = Math.round(center.y - node.height / 2)
+    }
+    if (select) {
+      figma.currentPage.selection = [node]
+      figma.viewport.scrollAndZoomIntoView([node])
+    }
+    return { id: node.id, name: node.name, type: node.type, width: round(node.width), height: round(node.height), scaled }
+  },
+
   async exec({ code } = {}) {
     if (!code) fail('missing code')
     let fn
@@ -1535,6 +1566,20 @@ async function uiExportSelection() {
   }
 }
 
+// Skalowanie wektora: oba wymiary = resize, jeden = proporcjonalnie. 1–10000 px,
+// bo `resize` na 0 wywala operację, a powyżej 10000 Figma i tak nie ma sensu.
+function fitSvgNode(node, width, height) {
+  const hasW = Number.isFinite(Number(width)) && Number(width) > 0
+  const hasH = Number.isFinite(Number(height)) && Number(height) > 0
+  if (!hasW && !hasH) return null
+  const clamp = (value) => Math.min(10000, Math.max(1, Math.round(value)))
+  let w = hasW ? clamp(width) : clamp((node.width * Number(height)) / node.height)
+  let h = hasH ? clamp(height) : clamp((node.height * Number(width)) / node.width)
+  if (hasW && hasH) { w = clamp(width); h = clamp(height) }
+  node.resize(w, h)
+  return { width: w, height: h }
+}
+
 // „Obrazek na canvasie" w Figmie to prostokąt z image-fillem — nie ramka, nie klatka.
 async function uiInsertImage(msg) {
   const bytes = bytesFromBase64(msg.base64)
@@ -1551,6 +1596,24 @@ async function uiInsertImage(msg) {
   figma.currentPage.selection = [rect]
   figma.viewport.scrollAndZoomIntoView([rect])
   figma.notify('Image placed on the canvas')
+}
+
+// Ten sam kod co op `createFromSvg`, tylko z powiadomieniem w Figmie i błędem z powrotem w panelu.
+async function uiInsertSvg(msg) {
+  try {
+    const placed = await OPS.createFromSvg({
+      svg: msg.svg,
+      width: msg.width,
+      height: msg.height,
+      name: msg.name || 'SVG · ' + new Date().toISOString().slice(11, 19),
+    })
+    figma.notify('Vector placed — ' + Math.round(placed.width) + '×' + Math.round(placed.height))
+    figma.ui.postMessage({ type: 'svgInserted', id: placed.id })
+  } catch (err) {
+    const message = err && err.message ? err.message : String(err)
+    figma.notify('SVG failed: ' + message.slice(0, 100), { error: true })
+    figma.ui.postMessage({ type: 'svgInserted', error: message })
+  }
 }
 
 async function uiFillSelection(msg) {
@@ -1587,6 +1650,7 @@ figma.ui.onmessage = async (msg) => {
   if (msg.type === 'selectionInfo') return uiSelectionInfo()
   if (msg.type === 'exportSelection') return uiExportSelection()
   if (msg.type === 'insertImage') return uiInsertImage(msg)
+  if (msg.type === 'insertSvg') return uiInsertSvg(msg)
   if (msg.type === 'fillSelection') return uiFillSelection(msg)
 
   if (msg.type !== 'run') return

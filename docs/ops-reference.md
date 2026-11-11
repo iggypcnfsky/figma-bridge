@@ -495,6 +495,26 @@ Returns `{ nodeId, name, format, bytes, base64 }`. The cap is 8 MB — above tha
 Creates the image locally with `figma.createImage` — nothing is uploaded to Figma's cloud.
 Returns `{ id, imageHash, bytes }`.
 
+## createFromSvg
+
+| parameter | default | meaning |
+|---|---|---|
+| `svg` | — (required) | SVG markup (`<svg …>`) |
+| `x`, `y` | viewport centre | top-left of the new frame |
+| `width`, `height` | SVG's own size | resize to both, or scale proportionally with one |
+| `name` | `SVG · HH:MM:SS` | layer name |
+| `select` | `true` | select the node and scroll to it |
+
+Places **real vectors**, not an image: `figma.createNodeFromSvg` builds a frame whose children are the
+paths, so fills and strokes stay editable. Returns `{ id, name, type, width, height, scaled }`.
+
+```bash
+figma op '{"op":"createFromSvg","svg":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"10\"/></svg>","width":48,"height":48}'
+```
+
+The panel's **Vector** mode and `figma svg gen|trace --insert` use this operation; it also accepts any
+SVG you already have, which makes it the way to bring an exported logo back onto the canvas.
+
 ## exec
 
 | parameter | meaning |

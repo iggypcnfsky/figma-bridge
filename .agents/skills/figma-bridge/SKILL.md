@@ -61,11 +61,13 @@ repo, and do not guess paths.
 ./bin/figma op '{"op":"varFill","nodeId":"12:34","variableName":"color/bg/surface"}'
 ./bin/figma export 12:34 out/card.png PNG 2
 ./bin/figma image 12:34 out/cover.png FILL      # local image file → fill (no cloud upload)
+./bin/figma svg gen "minimal line-art fox" --out out/fox.svg --insert   # QuiverAI → vectors
+./bin/figma svg trace logo.png --insert          # raster → editable paths
 ```
 
 Ops: `ping status pages variables styles fonts inventory` · `selection node find` · `createFrame createRect
 createEllipse createText createPage createInstance` · `update text clone reparent remove goto group
-ungroup select` · `grids setGrids align distribute effects` · `applyStyle varFill` · `export imageFill` ·
+ungroup select` · `grids setGrids align distribute effects` · `applyStyle varFill` · `export imageFill createFromSvg` ·
 `exec`.
 Full parameters: `docs/ops-reference.md`.
 
@@ -135,6 +137,35 @@ pass that file as `--ref`.
 The plugin window also has a **Generate / Edit panel** for humans (model, size presets, cost, insert).
 Do not drive the panel programmatically — use the CLI; it exposes more (mask, variants, dry run).
 Presets saved in that panel live in `figma-bridge/presets.json`.
+
+## Vectors (QuiverAI)
+
+Raster is not always the answer: for icons, logos, diagrams and anything that must survive scaling,
+generate **real vectors**. `Generate → Vector` in the panel, or the CLI, calls QuiverAI and lands the
+SVG through `createFromSvg` — an editable frame of paths, not a picture in a rectangle.
+
+```bash
+./bin/figma svg doctor                     # key set? catalog reachable?
+./bin/figma svg models                     # what this key can call (arrow-2 by default)
+./bin/figma svg gen "heraldic fox crest, flat two-colour, centred" --out out/fox.svg
+./bin/figma svg gen "logo mark for a coffee brand" --ref mood.png --insert
+./bin/figma svg trace logo.png --insert    # vectorize: no prompt, trace as-is
+./bin/figma svg gen "…" --width 512 --height 512 --insert
+```
+
+- Needs `QUIVERAI_API_KEY` in `figma-bridge/.env` (or the environment) — if `figma svg doctor` says it
+  is missing, ask the user for a key rather than improvising; the API bills per token.
+- Prompt the way you would brief a designer: subject, style, palette (hex), composition, and the exact
+  text if lettering matters. References help; name each one's role in the prompt ("palette from the
+  second image") because Quiver gets pictures, not `#imageN` placeholders.
+- **trace** (vectorization) takes the first reference and ignores the prompt. Crop tightly first —
+  cropping beats `auto_crop` and gives cleaner paths.
+- Limits: 12 MB, 4096 px per side, 16.7 M pixels per reference; 14 references. The server rejects
+  over-limit input before any charge.
+- The result is one `<svg>` string. Check it visually (`open out/fox.svg`, or the panel preview) before
+  claiming success; the panel shows the token usage and the exact cost after the run.
+- You can place any SVG you already have with
+  `{"op":"createFromSvg","svg":"<svg …>","width":48,"height":48}`.
 
 ## Building on an existing draft
 

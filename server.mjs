@@ -15,6 +15,17 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync }
 import { inflateSync } from 'node:zlib'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  LIMITS as QUIVER_LIMITS,
+  costUsd as quiverCostUsd,
+  configured as quiverConfigured,
+  doctor as quiverDoctor,
+  generate as quiverGenerate,
+  listModels as quiverListModels,
+  modelsFor as quiverModelsFor,
+  svgSize as quiverSvgSize,
+  vectorize as quiverVectorize,
+} from './lib/quiver.mjs'
 
 const PORT = Number(process.env.FIGMA_BRIDGE_PORT || 3847)
 const HOST = process.env.FIGMA_BRIDGE_HOST || '127.0.0.1'
@@ -317,6 +328,13 @@ function imageArgs(body, refPaths) {
   return args
 }
 
+/** PNG header size, or null for anything that is not a PNG. */
+function pngSize(buffer) {
+  if (!buffer || buffer.length < 24) return null
+  if (buffer.toString('latin1', 12, 16) !== 'IHDR') return null
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) }
+}
+
 /**
  * Czy PNG naprawdę zawiera przezroczyste piksele (a nie tylko kanał alfa)?
  * Obsługujemy to, co daje fal: 8-bit RGBA, bez przeplotu. Gdy format jest inny — null,
@@ -459,13 +477,6 @@ function enqueueImageJob(body) {
 
   // fal compares the mask with the FIRST image and rejects a mismatch; catching it here
   // turns a paid 422 into a clear message.
-  function pngSize(buffer) {
-    if (!buffer || buffer.length < 24) return null
-    if (buffer.toString('latin1', 12, 16) !== 'IHDR') return null
-    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) }
-  }
-
-  // Maska: panel wysyła gotowy PNG (białe = edytuj, czarne = zostaw), albo ścieżkę (CLI/agent).
   let maskPath = typeof body.mask === 'string' ? body.mask : null
   if (body.mask && typeof body.mask === 'object') {
     if (!body.mask.base64) throw new Error('mask needs {filename, base64}')
@@ -489,6 +500,137 @@ function enqueueImageJob(body) {
   imageJobs.set(id, job)
   imageQueue.push(job)
   pumpImageQueue()
+  return job
+}
+
+// --- wektory (QuiverAI) --------------------------------------------------------
+// Panel i CLI wysyłają zlecenie tutaj; ten proces woła api.quiver.ai, więc klucz zostaje
+// na dysku i manifest Figmy dalej zna wyłącznie localhost. Billing jest tokenowy —
+// kwotę liczymy z `usage` i stawek zwróconych przez /v1/models.
+const svgJobs = new Map()
+const svgQueue = []
+let svgRunning = 0
+const SVG_CONCURRENCY = Math.max(1, Math.min(4, Number(process.env.SVG_CONCURRENCY || 2)))
+const SVG_JOB_TTL_MS = 60 * 60 * 1000
+
+function pumpSvgQueue() {
+  while (svgRunning < SVG_CONCURRENCY && svgQueue.length > 0) {
+    startSvgJob(svgQueue.shift())
+  }
+}
+
+function svgLog(job, line) {
+  job.log.push(line)
+  if (job.log.length > 200) job.log.shift()
+}
+
+function startSvgJob(job) {
+  svgRunning += 1
+  job.status = 'running'
+  log(`svg job ${job.id.slice(0, 8)} -> ${job.mode} ${job.model} (${svgRunning}/${SVG_CONCURRENCY} running)`)
+  ;(async () => {
+    const catalog = await quiverListModels()
+    const entry = catalog.models.find((model) => model.id === job.model) || null
+    svgLog(job, 'quiver · ' + job.mode + ' · ' + job.model + (job.refs.length ? ' · ' + job.refs.length + ' reference(s)' : ''))
+    const payload = job.mode === 'vectorize'
+      ? await quiverVectorize({ model: job.model, image: { base64: job.refs[0].base64 }, autoCrop: true })
+      : await quiverGenerate({ model: job.model, prompt: job.prompt, references: job.refs.map((ref) => ({ base64: ref.base64 })) })
+    const usage = payload.usage || null
+    const cost = quiverCostUsd(usage, entry)
+    const svg = payload.svg
+    writeFileSync(join(job.dir, 'result.svg'), svg)
+    job.result = {
+      svg,
+      width: payload.width,
+      height: payload.height,
+      model: payload.model,
+      usage,
+      cost,
+      bytes: Buffer.byteLength(svg),
+      mode: job.mode,
+      // `svgs` jest tu zawsze jednoelementowe: panel wstawia jeden wektor na raz
+      svgCount: payload.svgs.length,
+    }
+    if (usage) {
+      const input = Number(usage.input_tokens || 0)
+      const output = Number(usage.output_tokens || 0)
+      svgLog(job, 'usage ' + (input / 1000).toFixed(1) + 'k in / ' + (output / 1000).toFixed(1) + 'k out' +
+        (cost ? ' · $' + cost.toFixed(4) : ''))
+    }
+    job.status = 'done'
+  })()
+    .catch((err) => {
+      job.status = 'error'
+      job.error = String(err.message || err)
+      svgLog(job, 'failed: ' + job.error)
+    })
+    .finally(() => {
+      svgRunning = Math.max(0, svgRunning - 1)
+      log(`svg job ${job.id.slice(0, 8)} ${job.status} (${svgRunning}/${SVG_CONCURRENCY} running)`)
+      pumpSvgQueue()
+      const timer = setTimeout(() => {
+        svgJobs.delete(job.id)
+        if (job.dir) rmSync(job.dir, { recursive: true, force: true })
+      }, SVG_JOB_TTL_MS)
+      timer.unref?.()
+    })
+}
+
+/** Validates a vector job, writes the references to disk and queues it. */
+async function enqueueSvgJob(body) {
+  if (!quiverConfigured()) {
+    throw new Error('QUIVERAI_API_KEY is not set — create a key at https://platform.quiver.ai/api-keys, ' +
+      'add QUIVERAI_API_KEY=... to figma-bridge/.env (or export it) and restart the bridge')
+  }
+  const mode = body.mode === 'vectorize' ? 'vectorize' : 'generate'
+  const prompt = String(body.prompt || '').trim()
+  const refsIn = Array.isArray(body.refs) ? body.refs : []
+  if (mode === 'generate' && !prompt) throw new Error('prompt is required')
+  if (mode === 'vectorize' && refsIn.length === 0) throw new Error('vectorize needs one reference image (the one to trace)')
+  if (refsIn.length > QUIVER_LIMITS.references) {
+    throw new Error('at most ' + QUIVER_LIMITS.references + ' references — this request has ' + refsIn.length)
+  }
+
+  const catalog = await quiverListModels()
+  const usable = catalog.models.length ? quiverModelsFor(mode, catalog.models) : []
+  const model = String(body.model || (usable[0] && usable[0].id) || 'arrow-2')
+  if (usable.length && !usable.some((entry) => entry.id === model)) {
+    throw new Error('model ' + model + ' cannot ' + (mode === 'vectorize' ? 'vectorize' : 'generate') +
+      ' — use ' + usable.map((entry) => entry.id).join(', '))
+  }
+
+  const id = randomUUID()
+  const dir = join(JOB_DIR, id)
+  mkdirSync(dir, { recursive: true })
+  const refs = []
+  for (const [index, ref] of refsIn.entries()) {
+    if (!ref || !ref.base64) throw new Error('every reference needs {filename, base64}')
+    const buffer = Buffer.from(String(ref.base64), 'base64')
+    if (buffer.length === 0) throw new Error('reference ' + (index + 1) + ' is empty')
+    if (buffer.length > QUIVER_LIMITS.bytes) {
+      throw new Error('reference ' + (index + 1) + ' is ' + (buffer.length / 1048576).toFixed(1) +
+        ' MB — QuiverAI accepts up to 12 MB per image; export it smaller or crop it')
+    }
+    const size = pngSize(buffer)
+    if (size) {
+      if (size.width > QUIVER_LIMITS.side || size.height > QUIVER_LIMITS.side) {
+        throw new Error('reference ' + (index + 1) + ' is ' + size.width + '×' + size.height +
+          ' — QuiverAI accepts up to ' + QUIVER_LIMITS.side + ' px per side; export it at 1× or crop it')
+      }
+      if (size.width * size.height > QUIVER_LIMITS.pixels) {
+        throw new Error('reference ' + (index + 1) + ' is ' + size.width + '×' + size.height +
+          ' — QuiverAI accepts up to 16.7 M pixels')
+      }
+    }
+    const file = join(dir, 'ref-' + index + '.png')
+    writeFileSync(file, buffer)
+    refs.push({ filename: String(ref.filename || 'ref-' + index + '.png'), base64: String(ref.base64), file, size })
+  }
+
+  const job = { id, dir, mode, model, prompt, refs, status: 'queued', log: [], createdAt: Date.now(), result: null, error: null }
+  svgJobs.set(id, job)
+  svgQueue.push(job)
+  pumpSvgQueue()
   return job
 }
 
@@ -531,6 +673,7 @@ async function handle(req, res) {
       inFlight: pending.size,
       busy: [...busy.entries()].map(([client, entry]) => ({ client, job: entry.job.slice(0, 8), ms: Date.now() - entry.since })),
       image: { running: imageRunning, queued: imageQueue.length, concurrency: IMAGE_CONCURRENCY },
+      svg: { running: svgRunning, queued: svgQueue.length, concurrency: SVG_CONCURRENCY, configured: quiverConfigured() },
       agents: agentsList(),
       agentCount: agents.size,
       waitingJobs: [...pending.keys()].map((k) => k.slice(0, 8)),
@@ -678,6 +821,70 @@ async function handle(req, res) {
       ok: job.status !== 'error',
       id: job.id,
       status: job.status,
+      log: job.log.slice(-40),
+      result: job.result,
+      error: job.error,
+    })
+  }
+
+  // --- wektory (QuiverAI) -------------------------------------------------
+  if (path.startsWith('/svg/')) {
+    if (foreignOrigin(req)) {
+      log(`svg ${req.method} ${path} BLOCKED origin=${req.headers.origin}`)
+      return json(res, 403, { error: 'this endpoint only accepts the Figma plugin (Origin: null)' })
+    }
+    log(`svg ${req.method} ${path}`)
+  }
+
+  if (req.method === 'GET' && path === '/svg/models') {
+    const { models, error } = await quiverListModels()
+    return json(res, 200, {
+      ok: !error,
+      configured: quiverConfigured(),
+      models,
+      usable: {
+        generate: quiverModelsFor('generate', models).map((model) => model.id),
+        vectorize: quiverModelsFor('vectorize', models).map((model) => model.id),
+      },
+      default: {
+        generate: (quiverModelsFor('generate', models)[0] || { id: 'arrow-2' }).id,
+        vectorize: (quiverModelsFor('vectorize', models)[0] || { id: 'arrow-2' }).id,
+      },
+      limits: QUIVER_LIMITS,
+      error,
+    })
+  }
+
+  if (req.method === 'GET' && path === '/svg/doctor') {
+    const report = await quiverDoctor()
+    return json(res, 200, { ok: report.ok, ...report })
+  }
+
+  if (req.method === 'POST' && path === '/svg/jobs') {
+    let body
+    try {
+      body = await readBody(req)
+    } catch (err) {
+      return json(res, 400, { error: err.message })
+    }
+    try {
+      const job = await enqueueSvgJob(body)
+      return json(res, 202, { ok: true, id: job.id, status: job.status, model: job.model, mode: job.mode })
+    } catch (err) {
+      return json(res, 400, { error: err.message })
+    }
+  }
+
+  if (req.method === 'GET' && path.startsWith('/svg/jobs/')) {
+    const id = path.slice('/svg/jobs/'.length)
+    const job = svgJobs.get(id)
+    if (!job) return json(res, 404, { error: 'unknown or expired job' })
+    return json(res, 200, {
+      ok: job.status !== 'error',
+      id: job.id,
+      status: job.status,
+      mode: job.mode,
+      model: job.model,
       log: job.log.slice(-40),
       result: job.result,
       error: job.error,
