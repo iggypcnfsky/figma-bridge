@@ -70,6 +70,16 @@
       #preview { width: 100%; max-height: 52vh; object-fit: contain; border-radius: 6px; border: 1px solid var(--figma-color-border, #ddd); background: #000; }
       #refInfo { font-size: 10px; opacity: .75; }
       #modeHint { font-size: 10px; line-height: 1.3; color: #b26b00; }
+      .dimline { font-size: 10px; opacity: .65; line-height: 1.3; }
+      #jobList { display: flex; flex-direction: column; gap: 4px; }
+      .job { display: grid; grid-template-columns: 8px 1fr auto; gap: 2px 6px; align-items: center;
+        border: 1px solid var(--figma-color-border, #ddd); border-radius: 5px; padding: 4px 6px; cursor: pointer; }
+      .job.on { border-color: var(--figma-color-border-brand, #0d99ff); }
+      .job .jdot { width: 6px; height: 6px; border-radius: 50%; background: #bf8700; }
+      .job.done .jdot { background: #1a7f37; }
+      .job.error .jdot { background: #cf222e; }
+      .job .jtext { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .job .jmeta { font-size: 9px; opacity: .6; white-space: nowrap; }
       #modeHint button { padding: 1px 5px; font-size: 10px; margin-left: 4px; }
       #refRow .row { flex-wrap: wrap; }
       .refs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
@@ -145,6 +155,7 @@
       <div class="tabs">
         <button data-tab="gen" class="on">Generate</button>
         <button data-tab="edit">Edit</button>
+        <button data-tab="jobs" title="Generations you started — click one to reopen it">Jobs <span id="jobsTabCount" class="pill zero">0</span></button>
         <button data-tab="agents" title="Who is working on this canvas">Agents <span id="agentsTabCount" class="pill zero">0</span></button>
       </div>
 
@@ -225,6 +236,11 @@
       </div>
       </div>
 
+      <div id="jobsBody" class="hidden">
+        <div class="dimline">Every run you start stays here. Click one to see its result and put its prompt back in the field — then run it again with changes.</div>
+        <div id="jobList"></div>
+      </div>
+
       <div id="agentsBody" class="hidden">
         <div id="agentsHint">Every agent that sent an operation to this canvas. Names are yours to set.</div>
         <div id="agentList"></div>
@@ -296,6 +312,9 @@
         windows: [],
         panelSize: loadPanelSize(),
         selMode: 'base',
+        jobs: [],
+        focusedJob: null,
+        polling: false,
         agentCmd: '',
         result: null,
         autoInsert: true,
@@ -340,7 +359,7 @@
             if (job && job.id) {
               setStatus(job.ops.length + ' op…', 'busy')
               toPlugin({ type: 'run', id: job.id, ops: job.ops, dryRun: job.dryRun })
-            } else if (!state.busy) setStatus('ready', 'ok')
+            } else if (!state.polling) setStatus('ready', 'ok')
           } catch (err) {
             clearTimeout(timer)
             setStatus('no server', 'bad', 'No server on localhost:3847 — run: node server.mjs')
@@ -361,7 +380,7 @@
         }
         if (msg.type === 'result') {
           const okCount = (msg.results || []).filter((r) => r.ok).length
-          if (!state.busy) setStatus(msg.ok ? 'ok · ' + okCount : 'error', msg.ok ? 'ok' : 'bad', msg.error || '')
+          if (!state.polling) setStatus(msg.ok ? 'ok · ' + okCount : 'error', msg.ok ? 'ok' : 'bad', msg.error || '')
           await fetch(BASE + '/result', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -1268,12 +1287,18 @@
           button.classList.toggle('on', button.dataset.tab === mode)
         }
         const agentsTab = mode === 'agents'
-        $('genBody').classList.toggle('hidden', agentsTab)
+        const jobsTab = mode === 'jobs'
+        $('genBody').classList.toggle('hidden', agentsTab || jobsTab)
         $('agentsBody').classList.toggle('hidden', !agentsTab)
+        $('jobsBody').classList.toggle('hidden', !jobsTab)
         // wejście w Edit od razu pyta o zaznaczenie, zamiast czekać na rozwinięcie panelu
         if (mode === 'edit') toPlugin({ type: 'selectionInfo' })
         if (agentsTab) {
           refreshAgents()
+          return
+        }
+        if (jobsTab) {
+          renderJobs()
           return
         }
         $('refRow').classList.toggle('hidden', mode !== 'edit')
@@ -1293,8 +1318,110 @@
       }
 
       // ------------------------------------------------------------------ gen
+      // ------------------------------------------------------------- kolejka zadań
+      // Każde uruchomienie to osobne zlecenie: nie czekamy na wynik, tylko dopisujemy je do listy
+      // i wracamy do promptu. Kilka generacji może lecieć naraz (serwer ma własny limit).
+      function renderJobs() {
+        const list = $('jobList')
+        if (!list) return
+        list.textContent = ''
+        for (const entry of state.jobs) {
+          const row = document.createElement('div')
+          row.className = 'job ' + (entry.status === 'done' ? 'done' : entry.status === 'error' ? 'error' : '')
+          if (state.focusedJob === entry.localId) row.classList.add('on')
+          const dot = document.createElement('span')
+          dot.className = 'jdot'
+          const text = document.createElement('span')
+          text.className = 'jtext'
+          text.textContent = (entry.mode === 'edit' ? 'edit · ' : 'gen · ') + entry.rawPrompt.replace(/\s+/g, ' ')
+          const meta = document.createElement('span')
+          meta.className = 'jmeta'
+          meta.textContent = entry.status === 'done'
+            ? '$' + (entry.cost ? Number(entry.cost).toFixed(4) : '?')
+            : entry.status
+          row.append(dot, text, meta)
+          row.onclick = () => openJob(entry)
+          list.append(row)
+        }
+        const active = state.jobs.filter((entry) => entry.status === 'running').length
+        const badge = $('jobsTabCount')
+        if (badge) {
+          badge.textContent = String(active || state.jobs.length)
+          badge.classList.toggle('zero', active === 0 && state.jobs.length === 0)
+        }
+        if (active) setStatus(active + ' running', 'busy', active + ' generation(s) in flight')
+        else if (!state.polling) setStatus('ready', 'ok')
+      }
+
+      function openJob(entry) {
+        state.focusedJob = entry.localId
+        $('prompt').value = entry.rawPrompt
+        if (entry.mode !== state.mode) setMode(entry.mode)
+        const result = entry.result || {}
+        if (result.base64) {
+          $('preview').src = 'data:image/png;base64,' + result.base64
+          $('result').classList.remove('hidden')
+          state.result = result
+        }
+        renderJobs()
+        log('opened ' + (entry.mode === 'edit' ? 'edit' : 'generation') + ' ' + entry.id.slice(0, 8) + ' — prompt restored')
+      }
+
+      // jeden pollowacz dla wszystkich zadań — kolejność zakończeń nie ma znaczenia
+      async function pollJobs() {
+        if (state.polling) return
+        state.polling = true
+        try {
+          for (;;) {
+            const active = state.jobs.filter((entry) => entry.status === 'running')
+            if (active.length === 0) break
+            await sleep(1200)
+            for (const entry of active) {
+              try {
+                const info = await api('/image/jobs/' + entry.id)
+                if (info.log && info.log.length) log(info.log[info.log.length - 1])
+                if (info.status === 'done') {
+                  entry.status = 'done'
+                  entry.result = info.result
+                  entry.cost = info.result && info.result.cost
+                  log('job ' + entry.id.slice(0, 8) + ' done · ' +
+                    (entry.cost ? '$' + entry.cost : 'cost not recorded'))
+                  const focused = state.focusedJob === entry.localId
+                  const newest = !state.focusedJob || state.jobs.findIndex((j) => j.localId === entry.localId) === 0
+                  if (focused || newest) {
+                    state.result = info.result
+                    if (info.result && info.result.base64) {
+                      $('preview').src = 'data:image/png;base64,' + info.result.base64
+                      $('result').classList.remove('hidden')
+                    }
+                  }
+                  if (state.autoInsert && info.result && info.result.base64) {
+                    toPlugin({
+                      type: 'insertImage',
+                      base64: info.result.base64,
+                      width: info.result.width || entry.width,
+                      height: info.result.height || entry.height,
+                    })
+                    log('auto-inserted job ' + entry.id.slice(0, 8))
+                  }
+                } else if (info.status === 'error') {
+                  entry.status = 'error'
+                  entry.error = info.error || 'job failed'
+                  log('job ' + entry.id.slice(0, 8) + ' failed: ' + entry.error)
+                }
+              } catch (err) {
+                log(err.message)
+              }
+            }
+            renderJobs()
+          }
+        } finally {
+          state.polling = false
+          renderJobs()
+        }
+      }
+
       async function run() {
-        if (state.busy) return
         const prompt = $('prompt').value.trim()
         if (!prompt) return log('prompt is empty')
         if (state.mode === 'edit' && state.refs.length === 0) {
@@ -1308,17 +1435,12 @@
           log('generating a NEW image — ' + state.refs.length + ' reference(s) are ignored here (Edit uses them)')
         }
 
-        state.busy = true
-        $('go').disabled = true
-        $('result').classList.add('hidden')
         try {
           const dims = dimsFromPreset(state.preset)
           let extraRefs = state.refs.slice(1)
           let passMask = null
 
           if (masks.length > 1) {
-            // Jeden request = jedna maska, więc łączymy je w jedną i dokładamy kolorowankę:
-            // model czyta kolory z obrazka + legendy, a maska trzyma edycję w zaznaczonych polach.
             const combo = await combineMasks(masks, primaryRef())
             extraRefs = [...extraRefs, combo.colorMap]
             passMask = combo.mask
@@ -1343,11 +1465,9 @@
             mode: state.mode,
             model: $('model').value,
             prompt: expanded,
-            // zawsze konkretne piksele — preset jest tylko sposobem ich wybrania
             size: dims.width + 'x' + dims.height,
             reasoning: $('reasoning').value || undefined,
             quality: $('quality').value || undefined,
-            // auto potrafi zwrócić RGBA; przezroczysty obszar na ciemnym tle to „czarna dziura”
             background: state.mode === 'edit' ? 'opaque' : undefined,
             confirmCost: true,
           }
@@ -1357,38 +1477,27 @@
           if (passMask) payload.mask = { filename: 'mask.png', base64: passMask.base64 }
 
           const job = await api('/image/jobs', { method: 'POST', body: JSON.stringify(payload) })
-          log('job ' + job.id.slice(0, 8))
-          for (;;) {
-            await sleep(1200)
-            const info = await api('/image/jobs/' + job.id)
-            if (info.log && info.log.length) log(info.log[info.log.length - 1])
-            if (info.status === 'done') {
-              state.result = info.result
-              if (info.result && info.result.base64) {
-                $('preview').src = 'data:image/png;base64,' + info.result.base64
-                $('result').classList.remove('hidden')
-              }
-              log('done · ' + (info.result && info.result.cost ? '$' + info.result.cost : 'cost not recorded'))
-              setStatus('ready', 'ok')
-              if (state.autoInsert && info.result && info.result.base64) {
-                toPlugin({
-                  type: 'insertImage',
-                  base64: info.result.base64,
-                  width: info.result.width || dims.width,
-                  height: info.result.height || dims.height,
-                })
-                log('auto-inserted on canvas')
-              }
-              break
-            }
-            if (info.status === 'error') throw new Error(info.error || 'job failed')
+          const entry = {
+            localId: 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4),
+            id: job.id,
+            mode: state.mode,
+            rawPrompt: prompt,
+            status: 'running',
+            width: dims.width,
+            height: dims.height,
+            cost: null,
+            result: null,
+            error: null,
+            createdAt: Date.now(),
           }
+          state.jobs.unshift(entry)
+          state.focusedJob = entry.localId
+          renderJobs()
+          log('job ' + job.id.slice(0, 8) + ' started — you can start another one')
+          pollJobs()
         } catch (err) {
           log(err.message)
           setStatus('error', 'bad', err.message)
-        } finally {
-          state.busy = false
-          $('go').disabled = false
         }
       }
 

@@ -182,6 +182,13 @@ The model sees the colours, the mask constrains the edit, and you pay once — t
 `≈ $0.0281 · 3 masks combined`. It is less exact than one mask on its own (the model has to respect
 the legend), which is why a single mask is still sent as a plain mask without the colour map.
 
+**Runs are jobs you can queue.** Press *Generate* / *Edit image* and the panel returns immediately; the
+run appears in the **Jobs** tab with its status and cost, and you can start the next one while it
+works. Clicking a job shows its result and puts its prompt back into the field, so a variation is
+"open, tweak, run again" rather than "wait, then rewrite". The server runs up to three `img-forge`
+processes at once (`IMAGE_CONCURRENCY`, 1–8); the rest wait in its queue. Auto-insert applies to each
+finished job, so turn it off if you are queueing several.
+
 **Generate and Edit are different jobs.** *Generate* calls the text-to-image endpoint: it makes a new
 picture from the prompt and **ignores references** (an edit is not what it does). *Edit* uses the
 references, the masks and the sizes. If references are attached while Generate is selected, the panel

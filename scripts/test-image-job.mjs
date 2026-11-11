@@ -115,6 +115,9 @@ try {
   const mismatchBody = await mismatch.json()
   check('mask/reference size mismatch is rejected', mismatch.status === 400 && /identical dimensions/.test(mismatchBody.error || ''), mismatchBody)
 
+  const status = await (await fetch(`${BASE}/status`)).json()
+  check('status reports the image lane', status.image && status.image.concurrency >= 1, status.image)
+
   const dir = join(repo, 'out', 'jobs', started.id)
   check('mask is on disk next to the refs', existsSync(join(dir, 'mask.png')) && existsSync(join(dir, 'ref-0.png')) && existsSync(join(dir, 'ref-1.png')))
   if (existsSync(dir)) rmSync(dir, { recursive: true, force: true })

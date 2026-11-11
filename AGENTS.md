@@ -98,6 +98,8 @@ Image generation (optional; needs a `FAL_KEY` and the sibling CLI,
   black (keep).
 - no token; requests carrying a foreign `Origin` get 403, and each job is capped by `--max-usd`
 - a job spawns `img-forge` and returns `{status, log, result:{file, base64, width, height}}`
+- image jobs run in parallel: `IMAGE_CONCURRENCY` (default 3, max 8) `img-forge` processes; `/status`
+  reports `image: {running, queued, concurrency}`
 - if you can run the CLI directly, do that instead — the endpoint exists for the Figma panel,
   which humans use from the plugin window (Generate / Edit tabs, insert-as-rectangle or fill)
 

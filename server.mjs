@@ -376,14 +376,21 @@ function pngHasTransparency(buffer) {
 }
 
 const imageQueue = []
-let imageRunning = false
+let imageRunning = 0
+// Kilka generacji naraz: każde zlecenie to osobny proces img-forge, więc nie muszą czekać
+// na siebie. Limit jest po to, żeby nie odpalić dwudziestu płatnych requestów przez pomyłkę.
+const IMAGE_CONCURRENCY = Math.max(1, Math.min(8, Number(process.env.IMAGE_CONCURRENCY || 3)))
 
 function pumpImageQueue() {
-  if (imageRunning || imageQueue.length === 0) return
-  const job = imageQueue.shift()
-  imageRunning = true
+  while (imageRunning < IMAGE_CONCURRENCY && imageQueue.length > 0) {
+    startImageJob(imageQueue.shift())
+  }
+}
+
+function startImageJob(job) {
+  imageRunning += 1
   job.status = 'running'
-  log(`image job ${job.id.slice(0, 8)} -> ${job.args[0]} ${job.body.model || '(default)'}`)
+  log(`image job ${job.id.slice(0, 8)} -> ${job.args[0]} ${job.body.model || '(default)'} (${imageRunning}/${IMAGE_CONCURRENCY} running)`)
   runImgForge(job.args, (line) => {
     job.log.push(line)
     if (job.log.length > 200) job.log.shift()
@@ -420,8 +427,8 @@ function pumpImageQueue() {
       job.error = String(err.message || err)
     })
     .finally(() => {
-      imageRunning = false
-      log(`image job ${job.id.slice(0, 8)} ${job.status}`)
+      imageRunning = Math.max(0, imageRunning - 1)
+      log(`image job ${job.id.slice(0, 8)} ${job.status} (${imageRunning}/${IMAGE_CONCURRENCY} running)`)
       pumpImageQueue()
       const timer = setTimeout(() => {
         imageJobs.delete(job.id)
@@ -523,6 +530,7 @@ async function handle(req, res) {
       queued: queue.length,
       inFlight: pending.size,
       busy: [...busy.entries()].map(([client, entry]) => ({ client, job: entry.job.slice(0, 8), ms: Date.now() - entry.since })),
+      image: { running: imageRunning, queued: imageQueue.length, concurrency: IMAGE_CONCURRENCY },
       agents: agentsList(),
       agentCount: agents.size,
       waitingJobs: [...pending.keys()].map((k) => k.slice(0, 8)),
