@@ -166,19 +166,18 @@ is only a window rendered at device pixels, so enlarging the panel makes it shar
 blockier. If you would rather build the mask in Figma, paint the area
 white on a black frame and use *From selection*; the panel thresholds it to pure black and white.
 
-**Several masks, several instructions.** Each mask in the list has its own name, its own colour and
-its own instruction, and by default the panel runs them as separate passes: mask 1 with its
-instruction, then mask 2 on the *result* of mask 1, and so on. That is what makes "swap the wall for
-#image2" and "replace the window with #image3" independent — one fal request can only carry one mask,
-so N masks mean N calls, and the cost line says so (`≈ $0.0281 × 3 passes = $0.0843`).
+**Several masks, one call.** Each mask in the list has its own name, its own colour and its own
+instruction, but fal accepts exactly one mask per request, so the panel combines them: the masks are
+OR-ed into a single white `mask_url` (the edit stays inside the marked regions) and a colour map of the
+reference — each area tinted with its mask's colour — is attached as the **last reference**, with a
+legend in the prompt:
 
-**Combine masks** does it in one call instead. fal only understands white-versus-black, so the colour
-cannot travel inside `mask_url`; the panel therefore unions all masks into one white region *and*
-attaches a colour map of the reference (each mask's area tinted with its colour) as the **last
-reference**, with a legend in the prompt: `"wall" marked in #ff00ff — swap for the material in
-reference image 2 (wall.png); "window" marked in #00b3ff…`. The model sees the colours, the mask keeps
-the edit inside the marked regions, and you pay once. Less exact than separate passes — the model has
-to respect the legend — which is why it is a checkbox, not the default.
+> "wall" marked in #ff00ff — swap for the material in reference image 2 (wall.png); "window" marked
+> in #00b3ff. Change only the marked areas, keep everything else untouched.
+
+The model sees the colours, the mask constrains the edit, and you pay once — the cost line says
+`≈ $0.0281 · 3 masks combined`. It is less exact than one mask on its own (the model has to respect
+the legend), which is why a single mask is still sent as a plain mask without the colour map.
 
 **References are numbered.** The first thumbnail is `#image1`, the second `#image2`, and the numbers
 are drawn on the thumbnails. Write `#image2` in any instruction and the panel expands it to
