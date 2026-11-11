@@ -67,7 +67,8 @@ Image generation (optional, requires a FAL_KEY and the sibling `img-forge` CLI):
 - `GET /image/models`, `GET /image/schema?model=…`, `POST /image/jobs`, `GET /image/jobs/:id`
 - all four need the `x-bridge-token` header; get the secret with `./bin/figma token`
 - a job spawns `img-forge` and returns `{status, log, result:{file, base64, width, height}}`
-- if you can run the CLI directly, do that instead — the endpoint exists for the Figma panel.
+- if you can run the CLI directly, do that instead — the endpoint exists for the Figma panel,
+  which humans use from the plugin window (Generate / Edit tabs, insert-as-rectangle or fill)
 
 ## Operations
 

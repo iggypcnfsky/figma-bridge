@@ -4,70 +4,151 @@
     <meta charset="utf-8" />
     <style>
       :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
       body {
         margin: 0;
-        font: 10px/1.3 Inter, system-ui, -apple-system, sans-serif;
-        padding: 6px 8px;
-        background: transparent;
+        font: 11px/1.35 Inter, system-ui, -apple-system, sans-serif;
         color: var(--figma-color-text, #111);
-        display: flex;
-        gap: 6px;
-        align-items: flex-start;
+        background: transparent;
         user-select: none;
       }
-      #dot {
-        width: 6px; height: 6px; border-radius: 50%;
-        margin-top: 3px; flex: 0 0 auto; background: #9aa0a6;
+      button, input, select, textarea {
+        font: inherit;
+        color: inherit;
+        background: var(--figma-color-bg-secondary, #f5f5f5);
+        border: 1px solid var(--figma-color-border, #ddd);
+        border-radius: 5px;
+        padding: 4px 6px;
       }
+      button { cursor: pointer; }
+      button:hover { border-color: var(--figma-color-border-strong, #999); }
+      button:disabled { opacity: .45; cursor: default; }
+      .row { display: flex; gap: 6px; align-items: center; }
+      .hidden { display: none !important; }
+
+      /* pasek statusu — widoczny zawsze */
+      #bar { display: flex; gap: 6px; align-items: center; padding: 6px 8px; }
+      #dot { width: 6px; height: 6px; border-radius: 50%; background: #9aa0a6; flex: 0 0 auto; }
       #dot.ok { background: #1a7f37; }
       #dot.busy { background: #bf8700; }
       #dot.bad { background: #cf222e; }
-      #txt {
-        flex: 1 1 auto;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
+      #status { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #toggle { padding: 2px 6px; line-height: 1; }
+
+      /* panel */
+      #panel { padding: 0 8px 8px; display: flex; flex-direction: column; gap: 6px; }
+      .tabs { display: flex; gap: 4px; }
+      .tabs button { flex: 1; }
+      .tabs button.on { background: var(--figma-color-bg-brand, #0d99ff); color: #fff; border-color: transparent; }
+      textarea { width: 100%; min-height: 52px; resize: vertical; }
+      label { display: flex; flex-direction: column; gap: 2px; font-size: 10px; opacity: .8; }
+      label > select, label > input { width: 100%; }
+      .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      .chips { display: flex; gap: 4px; flex-wrap: wrap; }
+      .chips button { padding: 3px 7px; font-size: 10px; }
+      .chips button.on { border-color: var(--figma-color-border-brand, #0d99ff); color: var(--figma-color-text-brand, #0d99ff); }
+      #cost { font-size: 10px; opacity: .8; min-height: 13px; }
+      #go { padding: 7px; font-weight: 600; }
+      #log { font-size: 10px; opacity: .75; max-height: 46px; overflow: auto; white-space: pre-wrap; }
+      #preview { width: 100%; border-radius: 6px; border: 1px solid var(--figma-color-border, #ddd); background: #000; }
+      #tokenRow input { flex: 1; }
+      #refInfo { font-size: 10px; opacity: .75; }
     </style>
   </head>
   <body>
-    <div id="dot"></div>
-    <div id="txt" title="Figma Bridge · localhost:3847">connecting…</div>
+    <div id="bar">
+      <span id="dot"></span>
+      <span id="status">connecting…</span>
+      <button id="toggle" title="Image generation">⌃</button>
+    </div>
+
+    <div id="panel" class="hidden">
+      <div class="tabs">
+        <button data-tab="gen" class="on">Generate</button>
+        <button data-tab="edit">Edit</button>
+      </div>
+
+      <div class="row" id="refRow">
+        <button id="useSel">Use selection</button>
+        <span id="refInfo">no reference</span>
+      </div>
+
+      <label>Model
+        <select id="model"></select>
+      </label>
+
+      <textarea id="prompt" placeholder="Describe the image…"></textarea>
+
+      <div class="chips" id="presets"></div>
+
+      <div class="pair">
+        <label>reasoning <select id="reasoning"></select></label>
+        <label>quality <select id="quality"></select></label>
+      </div>
+
+      <div id="cost"></div>
+      <button id="go">Generate</button>
+      <div id="log"></div>
+
+      <div id="result" class="hidden">
+        <img id="preview" alt="result" />
+        <div class="row" style="margin-top:6px">
+          <button id="insert">Insert on canvas</button>
+          <button id="fill">Fill selection</button>
+        </div>
+      </div>
+
+      <div class="row hidden" id="tokenRow">
+        <input id="token" placeholder="bridge token — run: ./bin/figma token" />
+        <button id="saveToken">Save</button>
+      </div>
+    </div>
+
     <script>
       const BASE = 'http://localhost:3847'
-      const dot = document.getElementById('dot')
-      const txt = document.getElementById('txt')
+      const PRESETS = ['1:1@1024', '16:9@2k', '9:16@1080']
+      const COLLAPSED = { width: 232, height: 34 }
+      const EXPANDED = { width: 360, height: 604 }
+
+      const $ = (id) => document.getElementById(id)
+      const dot = $('dot')
+      const statusEl = $('status')
+      const state = {
+        token: null,
+        models: {},
+        schema: null,
+        mode: 'gen',
+        preset: '1:1@1024',
+        ref: null,
+        result: null,
+        expanded: false,
+        busy: false,
+      }
+
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-
-      function setStatus(msg, cls, tooltip) {
-        txt.textContent = msg
-        txt.title = tooltip || msg
-        dot.className = cls || ''
+      const setStatus = (text, kind, tooltip) => {
+        statusEl.textContent = text
+        statusEl.title = tooltip || text
+        dot.className = kind || ''
       }
+      const toPlugin = (msg) => parent.postMessage({ pluginMessage: msg }, '*')
 
-      async function pollOnce() {
-        const ctrl = new AbortController()
-        const timer = setTimeout(() => ctrl.abort(), 40000)
-        try {
-          const res = await fetch(BASE + '/poll', { cache: 'no-store', signal: ctrl.signal })
-          if (!res.ok) throw new Error('HTTP ' + res.status)
-          return await res.json()
-        } finally {
-          clearTimeout(timer)
-        }
-      }
-
-      async function loop() {
+      // ---------------------------------------------------------------- mostek
+      // Ten sam long-poll co wcześniej: to on utrzymuje połączenie agenta z Figmą.
+      async function bridgeLoop() {
         for (;;) {
+          const ctrl = new AbortController()
+          const timer = setTimeout(() => ctrl.abort(), 40000)
           try {
-            const job = await pollOnce()
+            const res = await fetch(BASE + '/poll', { cache: 'no-store', signal: ctrl.signal })
+            clearTimeout(timer)
+            const job = await res.json()
             if (job && job.id) {
               setStatus(job.ops.length + ' op…', 'busy')
-              parent.postMessage({ pluginMessage: { type: 'run', id: job.id, ops: job.ops, dryRun: job.dryRun } }, '*')
-            } else {
-              setStatus('ready', 'ok')
-            }
+              toPlugin({ type: 'run', id: job.id, ops: job.ops, dryRun: job.dryRun })
+            } else if (!state.busy) setStatus('ready', 'ok')
           } catch (err) {
+            clearTimeout(timer)
             setStatus('no server', 'bad', 'No server on localhost:3847 — run: node server.mjs')
             await sleep(1500)
           }
@@ -76,22 +157,286 @@
 
       window.onmessage = async (event) => {
         const msg = event.data && event.data.pluginMessage
-        if (!msg || msg.type !== 'result') return
-        const ops = msg.results || []
-        const okCount = ops.filter((r) => r.ok).length
-        setStatus(msg.ok ? 'ok · ' + okCount : 'error', msg.ok ? 'ok' : 'bad', msg.ok ? 'ok · ' + okCount + ' ops' : msg.error)
-        try {
+        if (!msg) return
+        if (msg.type === 'result') {
+          const okCount = (msg.results || []).filter((r) => r.ok).length
+          if (!state.busy) setStatus(msg.ok ? 'ok · ' + okCount : 'error', msg.ok ? 'ok' : 'bad', msg.error || '')
           await fetch(BASE + '/result', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ id: msg.id, ok: msg.ok, results: msg.results, error: msg.error }),
-          })
-        } catch (err) {
-          setStatus('no server', 'bad')
+          }).catch(() => {})
+          return
+        }
+        if (msg.type === 'token') {
+          state.token = msg.token || null
+          $('tokenRow').classList.toggle('hidden', Boolean(state.token))
+          if (state.token) loadModels()
+          return
+        }
+        if (msg.type === 'selectionImage') {
+          state.ref = msg
+          $('refInfo').textContent = msg.width + '×' + msg.height + ' from selection'
+          updateCost()
+          return
+        }
+        if (msg.type === 'selectionInfo') {
+          $('useSel').disabled = !msg.count
+          $('refInfo').textContent = msg.count ? msg.name : 'nothing selected'
+          return
         }
       }
 
-      loop()
+      // ------------------------------------------------------------------- api
+      async function api(path, options = {}) {
+        const res = await fetch(BASE + path, {
+          ...options,
+          headers: { 'content-type': 'application/json', 'x-bridge-token': state.token || '', ...(options.headers || {}) },
+        })
+        if (res.status === 401) {
+          $('tokenRow').classList.remove('hidden')
+          throw new Error('token required')
+        }
+        const body = await res.json()
+        if (!res.ok) throw new Error(body.error || 'HTTP ' + res.status)
+        return body
+      }
+
+      // ---------------------------------------------------------------- model
+      async function loadModels() {
+        try {
+          const data = await api('/image/models')
+          state.models = data.models || {}
+          const select = $('model')
+          select.innerHTML = ''
+          for (const [id, entry] of Object.entries(state.models)) {
+            const option = document.createElement('option')
+            option.value = id
+            option.textContent = entry.label || id
+            select.appendChild(option)
+          }
+          const wanted = state.mode === 'edit' ? data.editDefault : data.default
+          if (wanted) select.value = wanted
+          await loadSchema()
+        } catch (err) {
+          log(err.message)
+        }
+      }
+
+      async function loadSchema() {
+        const model = $('model').value
+        if (!model) return
+        try {
+          const data = await api('/image/schema?model=' + encodeURIComponent(model))
+          state.schema = data.fields || {}
+          fillEnum('reasoning', 'reasoning_effort')
+          fillEnum('quality', 'quality')
+          updateCost()
+        } catch (err) {
+          log(err.message)
+        }
+      }
+
+      function fillEnum(elementId, field) {
+        const select = $(elementId)
+        const fieldInfo = state.schema && state.schema[field]
+        const parent = select.parentElement
+        if (!fieldInfo || !fieldInfo.enum) {
+          parent.classList.add('hidden')
+          select.innerHTML = ''
+          return
+        }
+        parent.classList.remove('hidden')
+        select.innerHTML = ''
+        for (const value of fieldInfo.enum) {
+          const option = document.createElement('option')
+          option.value = value
+          option.textContent = value
+          select.appendChild(option)
+        }
+        select.value = fieldInfo.default && fieldInfo.enum.includes(fieldInfo.default) ? fieldInfo.default : fieldInfo.enum[0]
+      }
+
+      // ---------------------------------------------------------------- koszt
+      function dimsFromPreset(preset) {
+        const [aspect, res] = preset.split('@')
+        const [a, b] = aspect.split(':').map(Number)
+        const long = /k$/i.test(res) ? parseFloat(res) * 1024 : Number(res)
+        return a >= b
+          ? { width: Math.round(long), height: Math.round((long * b) / a) }
+          : { width: Math.round((long * a) / b), height: Math.round(long) }
+      }
+
+      function updateCost() {
+        const model = $('model').value
+        const entry = state.models[model]
+        const pricing = entry && entry.pricing
+        const quality = $('quality').value || 'auto'
+        if (!pricing) return ($('cost').textContent = '')
+        const base = pricing.baseImageTokens && pricing.baseImageTokens[quality]
+        if (!base) return ($('cost').textContent = '')
+        const dims = dimsFromPreset(state.preset)
+        const tokens = (base * dims.width * dims.height) / (1024 * 1024)
+        const refs = state.mode === 'edit' && state.ref ? pricing.referenceTokensPerImage || 0 : 0
+        const promptTokens = Math.max(1, Math.ceil(($('prompt').value || '').length / 4))
+        const cost =
+          (tokens * pricing.imageOutputTokensPerM) / 1e6 +
+          ((promptTokens + refs) * pricing.textInputTokensPerM) / 1e6
+        $('cost').textContent =
+          '≈ $' + (Math.ceil(cost * 10000) / 10000).toFixed(4) + ' · ' + dims.width + '×' + dims.height + ' · ' + quality
+      }
+
+      // ----------------------------------------------------------------- tryb
+      function setMode(mode) {
+        state.mode = mode
+        for (const button of document.querySelectorAll('.tabs button')) {
+          button.classList.toggle('on', button.dataset.tab === mode)
+        }
+        $('refRow').classList.toggle('hidden', mode !== 'edit')
+        $('go').textContent = mode === 'edit' ? 'Edit image' : 'Generate'
+        const models = Object.entries(state.models)
+        const wanted = Object.keys(state.models).find((id) => (mode === 'edit' ? /\/edit$/.test(id) : !/\/edit$/.test(id)))
+        if (wanted) $('model').value = wanted
+        loadSchema()
+        updateCost()
+      }
+
+      function log(text) {
+        const line = String(text || '')
+        if (!line) return
+        $('log').textContent = line + '\n' + $('log').textContent
+        $('log').textContent = $('log').textContent.split('\n').slice(0, 6).join('\n')
+      }
+
+      // ------------------------------------------------------------------ gen
+      async function run() {
+        if (state.busy) return
+        const prompt = $('prompt').value.trim()
+        if (!prompt) return log('prompt is empty')
+        if (state.mode === 'edit' && !state.ref) {
+          toPlugin({ type: 'exportSelection' })
+          log('waiting for the selection…')
+          return
+        }
+        state.busy = true
+        $('go').disabled = true
+        $('result').classList.add('hidden')
+        setStatus('generating…', 'busy')
+        log('queued')
+        try {
+          const dims = dimsFromPreset(state.preset)
+          const payload = {
+            mode: state.mode,
+            model: $('model').value,
+            prompt,
+            preset: state.preset,
+            sizing: dims,
+            reasoning: $('reasoning').value || undefined,
+            quality: $('quality').value || undefined,
+            confirmCost: true,
+          }
+          if (state.mode === 'edit' && state.ref) {
+            payload.refs = [{ filename: 'selection.png', base64: state.ref.base64 }]
+          }
+          const job = await api('/image/jobs', { method: 'POST', body: JSON.stringify(payload) })
+          log('job ' + job.id.slice(0, 8))
+          for (;;) {
+            await sleep(1200)
+            const info = await api('/image/jobs/' + job.id)
+            if (info.log && info.log.length) log(info.log[info.log.length - 1])
+            if (info.status === 'done') {
+              state.result = info.result
+              if (info.result && info.result.base64) {
+                $('preview').src = 'data:image/png;base64,' + info.result.base64
+                $('result').classList.remove('hidden')
+              }
+              log('done · ' + (info.result && info.result.cost ? '$' + info.result.cost : 'cost not recorded'))
+              setStatus('ready', 'ok')
+              break
+            }
+            if (info.status === 'error') throw new Error(info.error || 'job failed')
+          }
+        } catch (err) {
+          log(err.message)
+          setStatus('error', 'bad', err.message)
+        } finally {
+          state.busy = false
+          $('go').disabled = false
+        }
+      }
+
+      // --------------------------------------------------------------- zdarzenia
+      $('toggle').onclick = () => {
+        state.expanded = !state.expanded
+        $('panel').classList.toggle('hidden', !state.expanded)
+        $('toggle').textContent = state.expanded ? '⌄' : '⌃'
+        const size = state.expanded ? EXPANDED : COLLAPSED
+        toPlugin({ type: 'resize', width: size.width, height: size.height })
+        if (state.expanded) {
+          if (!state.token) $('tokenRow').classList.remove('hidden')
+          else if (!Object.keys(state.models).length) loadModels()
+          toPlugin({ type: 'selectionInfo' })
+        }
+      }
+
+      for (const button of document.querySelectorAll('.tabs button')) {
+        button.onclick = () => setMode(button.dataset.tab)
+      }
+
+      $('model').onchange = () => loadSchema()
+      $('quality').onchange = () => updateCost()
+      $('prompt').oninput = () => updateCost()
+      $('go').onclick = run
+
+      $('useSel').onclick = () => {
+        toPlugin({ type: 'exportSelection' })
+        log('exporting selection…')
+      }
+
+      $('insert').onclick = () => {
+        if (!state.result || !state.result.base64) return
+        toPlugin({
+          type: 'insertImage',
+          base64: state.result.base64,
+          width: state.result.width || 1024,
+          height: state.result.height || 1024,
+        })
+        log('inserted on canvas')
+      }
+
+      $('fill').onclick = () => {
+        if (!state.result || !state.result.base64) return
+        toPlugin({ type: 'fillSelection', base64: state.result.base64 })
+        log('applied to selection')
+      }
+
+      $('saveToken').onclick = () => {
+        const token = $('token').value.trim()
+        if (!token) return
+        state.token = token
+        toPlugin({ type: 'setToken', token })
+        $('tokenRow').classList.add('hidden')
+        loadModels().catch((err) => log(err.message))
+      }
+
+      // ------------------------------------------------------------------ start
+      const chips = $('presets')
+      for (const preset of PRESETS) {
+        const button = document.createElement('button')
+        button.textContent = preset.replace('@', ' @')
+        button.className = preset === state.preset ? 'on' : ''
+        button.onclick = () => {
+          state.preset = preset
+          for (const other of chips.children) other.classList.remove('on')
+          button.classList.add('on')
+          updateCost()
+        }
+        chips.appendChild(button)
+      }
+
+      toPlugin({ type: 'resize', width: COLLAPSED.width, height: COLLAPSED.height })
+      toPlugin({ type: 'getToken' })
+      bridgeLoop()
     </script>
   </body>
 </html>

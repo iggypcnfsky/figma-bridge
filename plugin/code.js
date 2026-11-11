@@ -59,6 +59,13 @@ function toBase64(bytes) {
   return out
 }
 
+function bytesFromBase64(base64) {
+  const binary = atob(String(base64))
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+
 async function getNode(id) {
   if (!id) fail('missing nodeId')
   const n = await figma.getNodeByIdAsync(id)
@@ -465,9 +472,7 @@ const OPS = {
   async imageFill({ nodeId, base64, scaleMode = 'FILL' } = {}) {
     if (!base64) fail('missing image base64')
     const n = await getNode(nodeId)
-    const binary = atob(base64)
-    const bytes = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+    const bytes = bytesFromBase64(base64)
     const image = figma.createImage(bytes)
     n.fills = [{ type: 'IMAGE', imageHash: image.hash, scaleMode }]
     return { id: n.id, imageHash: image.hash, bytes: bytes.length }
@@ -507,8 +512,100 @@ async function withPageRetry(run) {
 
 // ----------------------------------------------------------------- message loop
 
+const STORE_TOKEN = 'figmaBridgeToken'
+
+// --- panel obrazów ---------------------------------------------------------
+async function uiSelectionInfo() {
+  const selection = figma.currentPage.selection
+  figma.ui.postMessage({
+    type: 'selectionInfo',
+    count: selection.length,
+    name: selection[0] ? selection[0].name : null,
+    nodeType: selection[0] ? selection[0].type : null,
+  })
+}
+
+async function uiExportSelection() {
+  const selection = figma.currentPage.selection
+  if (selection.length === 0) {
+    figma.notify('Select a frame or layer first', { error: true })
+    figma.ui.postMessage({ type: 'selectionImage', error: 'nothing selected' })
+    return
+  }
+  const node = selection[0]
+  try {
+    const bytes = await node.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 2 } })
+    if (bytes.length > 12 * 1024 * 1024) throw new Error('selection is too large for a reference (12 MB cap)')
+    figma.ui.postMessage({
+      type: 'selectionImage',
+      base64: toBase64(bytes),
+      width: Math.round(node.width),
+      height: Math.round(node.height),
+      name: node.name,
+    })
+  } catch (err) {
+    figma.notify('Export failed: ' + err.message, { error: true })
+    figma.ui.postMessage({ type: 'selectionImage', error: err.message })
+  }
+}
+
+// „Obrazek na canvasie" w Figmie to prostokąt z image-fillem — nie ramka, nie klatka.
+async function uiInsertImage(msg) {
+  const bytes = bytesFromBase64(msg.base64)
+  const image = figma.createImage(bytes)
+  const width = Number(msg.width) || 1024
+  const height = Number(msg.height) || 1024
+  const rect = figma.createRectangle()
+  rect.resize(width, height)
+  rect.name = 'img · ' + new Date().toISOString().slice(11, 19)
+  rect.fills = [{ type: 'IMAGE', imageHash: image.hash, scaleMode: 'FILL' }]
+  const center = figma.viewport.center
+  rect.x = Math.round(center.x - width / 2)
+  rect.y = Math.round(center.y - height / 2)
+  figma.currentPage.selection = [rect]
+  figma.viewport.scrollAndZoomIntoView([rect])
+  figma.notify('Image placed on the canvas')
+}
+
+async function uiFillSelection(msg) {
+  const selection = figma.currentPage.selection
+  if (selection.length === 0) {
+    figma.notify('Select a layer to fill', { error: true })
+    return
+  }
+  const node = selection[0]
+  if (!('fills' in node)) {
+    figma.notify(node.type + ' cannot hold an image fill', { error: true })
+    return
+  }
+  const image = figma.createImage(bytesFromBase64(msg.base64))
+  node.fills = [{ type: 'IMAGE', imageHash: image.hash, scaleMode: 'FILL' }]
+  figma.notify('Fill replaced')
+}
+
 figma.ui.onmessage = async (msg) => {
-  if (!msg || msg.type !== 'run') return
+  if (!msg || typeof msg.type !== 'string') return
+
+  if (msg.type === 'resize') {
+    figma.ui.resize(Math.round(Number(msg.width) || 232), Math.round(Number(msg.height) || 34))
+    return
+  }
+  if (msg.type === 'getToken') {
+    const stored = await figma.clientStorage.getAsync(STORE_TOKEN)
+    figma.ui.postMessage({ type: 'token', token: typeof stored === 'string' ? stored : null })
+    return
+  }
+  if (msg.type === 'setToken') {
+    await figma.clientStorage.setAsync(STORE_TOKEN, String(msg.token || ''))
+    figma.notify('Token saved')
+    return
+  }
+  if (msg.type === 'selectionInfo') return uiSelectionInfo()
+  if (msg.type === 'exportSelection') return uiExportSelection()
+  if (msg.type === 'insertImage') return uiInsertImage(msg)
+  if (msg.type === 'fillSelection') return uiFillSelection(msg)
+
+  if (msg.type !== 'run') return
   const ops = Array.isArray(msg.ops) ? msg.ops : []
   const results = []
   let ok = true

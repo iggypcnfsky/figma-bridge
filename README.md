@@ -92,6 +92,18 @@ DSH discovers skills from `<repo>/.agents/skills` (project), `~/.dsh/skills` and
 (global) and watches those directories, so a new skill appears without a restart. Verify with
 `skill figma-bridge`.
 
+## Image panel in Figma
+
+The plugin's status bar doubles as an image panel: click `⌃` and the window expands to
+Generate / Edit. Model, `reasoning` and `quality` come from the model's OpenAPI schema, presets are
+chips (`1:1@1k`, `16:9@2k`, `9:16@1080`), and the cost estimate is shown before you spend anything.
+
+- **Insert on canvas** drops the image as a plain rectangle with an image fill at the viewport centre —
+  a picture on the canvas, not nested inside a frame.
+- **Fill selection** applies it as a fill to whatever is selected.
+- **Edit** uses the current selection as the reference (`exportAsync` → server → `img edit`).
+- The bridge token is asked once and kept in `figma.clientStorage`.
+
 ## Image generation endpoint
 
 The server also fronts [img-forge](../img-forge), the fal.ai CLI, so a Figma panel can generate images
