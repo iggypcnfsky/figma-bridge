@@ -335,6 +335,27 @@ Returns `{ applied: [{ok, id, name, characters?, reason?}] }` — a failed overr
 Call without `set` to read the current properties first; names must match exactly, so read, then write.
 Returns `{ id, applied, properties }`.
 
+## saveStyle
+
+Creates or updates a local style by name — the write half of the style system.
+
+| parameter | kind | meaning |
+|---|---|---|
+| `kind` | `text` | `font {family, style}`, `fontSize`, `lineHeight`, `letterSpacing` |
+| | `paint` | `color` (hex) or `paints[]` |
+| | `effect` | `effects[]` |
+| | `grid` | `layoutGrids[]` |
+| `name` | any | style name; an existing style with that name is updated in place |
+
+Returns `{ id, name, kind, created }`. Fonts are loaded before assignment, so a missing family fails
+with Figma's message instead of half-applying.
+
+```bash
+./bin/figma op '{"op":"saveStyle","kind":"text","name":"heading/xl",
+                 "font":{"family":"Inter","style":"Semi Bold"},"fontSize":32,"lineHeight":40}'
+./bin/figma op '{"op":"applyStyle","nodeId":"12:34","styleName":"heading/xl"}'
+```
+
 ## applyStyle
 
 | parameter | meaning |

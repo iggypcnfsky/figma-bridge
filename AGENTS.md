@@ -100,7 +100,8 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
 | Components | `instanceText`, `instanceProps` |
 | Modify | `update`, `clone`, `reparent`, `remove`, `goto`, `group`, `ungroup`, `select` |
 | Layout | `grids`, `setGrids`, `align`, `distribute`, `constraints`, `sizing`, `effects`, `gradient` |
-| Styles | `styles`, `applyStyle`, `varFill` |
+| Measure/place | `measure`, `placeNear` |
+| Styles | `styles`, `saveStyle`, `applyStyle`, `varFill` |
 | Assets | `export` (base64 → file), `imageFill` (base64 → fill) |
 | Full API | `exec` — arbitrary JS with `figma` in scope |
 
@@ -111,11 +112,12 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
 2. **Do not touch someone else's layers without consent.** `update`, `remove`, `reparent` on existing
    user content only on an explicit instruction. Create new things alongside, prefixed
    (`Bridge / …`), so they can be found and deleted.
-3. **A rework is a new artefact, not an edit of theirs.** When asked to redo a slide, screen or
-   section, duplicate the original, put the result **next to it** (above, below or beside — never
-   overlapping it) and name it clearly (`Bridge / v2 — <original name>`). Edit the original in place
-   **only** when the user says to replace something on it. This is the default; ask if placement is
-   genuinely ambiguous.
+3. **A rework is a new artefact, close to the original.** When asked to redo a slide, screen or
+   section, duplicate the original, place the result **immediately beside it** — as close as the free
+   space allows, never overlapping it — and name it `Bridge / v2 — <original name>`. Get the spot from
+   `placeNear` (it scans the siblings and returns the first free side) instead of guessing
+   coordinates; when no side is free, ask the user. Edit the original in place **only** when the user
+   says to replace something on it.
 4. **One batch = one thought.** An operation cannot use a previous operation's result (there is no
    templating), so when you need a new node's `id`, split into two calls.
 5. **Verify with a render.** After building anything visual, `export` a PNG and look at the image.

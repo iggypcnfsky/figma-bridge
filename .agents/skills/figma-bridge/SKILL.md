@@ -64,6 +64,10 @@ Design-work shortcuts worth knowing:
 - **design system**: `createInstance` with a `COMPONENT` id, then `instanceProps` for variants (read
   the names first) and `instanceText` to change copy without detaching; `applyStyle` for styles. Do not
   redraw what the library already ships, and do not detach an instance to "fix" its text.
+- **spacing checks**: `{"op":"measure","a":"1:2","b":"1:3"}` returns gaps per side and centre distance;
+  use it instead of exporting a screenshot to judge alignment.
+- **styles**: `saveStyle` creates or updates a `text` / `paint` / `effect` / `grid` style by name, and
+  `applyStyle` applies it. Create the token once, apply it everywhere.
 - **responsive**: `sizing` sets `HUG`/`FILL`/`FIXED` per axis plus min/max; `constraints` covers
   non-auto-layout children (`STRETCH`/`MIN`/`MAX`/`CENTER`/`SCALE`). Read both from `node` before
   changing them — `sizing` returns `skipped` with Figma's reason when a property does not apply.
@@ -97,9 +101,12 @@ Presets saved in that panel live in `figma-bridge/presets.json`.
   new node's `id`, split into two calls.
 - **Never touch existing user layers** (`update`, `remove`, `reparent`) without explicit instruction.
   Prefix your own creations: `Bridge / …`.
-- **A rework goes beside the original.** Asked to redo a slide/screen/section: duplicate it, place the
-  new version above, below or next to it (never overlapping), name it `Bridge / v2 — <name>`, and leave
-  the original untouched. Replace elements in place only when the user explicitly asks for that.
+- **A rework goes right beside the original, as close as possible.** Asked to redo a
+  slide/screen/section: duplicate it, call
+  `{"op":"placeNear","nodeId":"<new id>","move":true,"gap":80,"name":"Bridge / v2 — <name>"}` so the
+  copy lands on the first free side instead of a guessed coordinate, and leave the original untouched.
+  If the tool reports `free: false`, ask where it should go. Replace elements in place only when the
+  user explicitly asks for that.
 - **`goto` changes the user's view** — only on request.
 - **`exec` is a last resort.** It works (Figma's sandbox allows `new Function`) and bypasses all
   parameter validation. Return JSON-serializable values only.

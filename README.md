@@ -42,8 +42,9 @@ agent ──HTTP──▶ server.mjs (localhost:3847) ◀──long-poll── p
 - `server.mjs` — job queue plus long-poll, no WebSockets, no npm packages.
 - `bin/figma` — CLI: `status`, `ping`, `selection`, `pages`, `variables`, `op`, `run`, `export`, `image`.
 - `plugin/code.js` — around 30 operations: frames, text, shapes, instances, `update`, `clone`,
-  `reparent`, `group`, `align`, `distribute`, layout grids (`setGrids`), effects and blur, gradients,
-  styles, `export`, `imageFill`, `variables`, `varFill`, `fonts`, `exec`.
+  `reparent`, `group`, `align`, `distribute`, `placeNear`, `measure`, layout grids (`setGrids`),
+  effects and blur, gradients, `constraints`, `sizing`, instances, styles, `export`, `imageFill`,
+  `variables`, `varFill`, `fonts`, `exec`.
 - `plugin/ui.html` — the status bar and the image panel.
 
 Several Figma windows may run the plugin at once. Each reports an id, file and page, and the server

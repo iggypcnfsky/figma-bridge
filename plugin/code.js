@@ -780,6 +780,139 @@ const OPS = {
     return { id: instance.id, name: instance.name, type: instance.type }
   },
 
+  /** Odległości między dwoma węzłami (współrzędne absolutne, więc działa w różnych rodzicach). */
+  async measure({ a, b } = {}) {
+    if (!a || !b) fail('pass a and b node ids')
+    const first = await getNode(a)
+    const second = await getNode(b)
+    const boxA = first.absoluteBoundingBox
+    const boxB = second.absoluteBoundingBox
+    if (!boxA || !boxB) fail('nodes need absolute bounds (an instance child may not have them)')
+    const gap = {
+      right: boxB.x - (boxA.x + boxA.width),
+      left: boxA.x - (boxB.x + boxB.width),
+      below: boxB.y - (boxA.y + boxA.height),
+      above: boxA.y - (boxB.y + boxB.height),
+    }
+    return {
+      a: { id: first.id, x: round(boxA.x), y: round(boxA.y), width: round(boxA.width), height: round(boxA.height) },
+      b: { id: second.id, x: round(boxB.x), y: round(boxB.y), width: round(boxB.width), height: round(boxB.height) },
+      gap: { right: round(gap.right), left: round(gap.left), below: round(gap.below), above: round(gap.above) },
+      horizontal: Math.abs(boxB.x - boxA.x),
+      vertical: Math.abs(boxB.y - boxA.y),
+      centerDistance: round(Math.hypot(boxA.x + boxA.width / 2 - (boxB.x + boxB.width / 2), boxA.y + boxA.height / 2 - (boxB.y + boxB.height / 2))),
+    }
+  },
+
+  /**
+   * Proponuje (i opcjonalnie zajmuje) wolne miejsce obok węzła: sprawdza rodzeństwo i wybiera
+   * pierwszą stronę bez kolizji. Dzięki temu „nowa wersja obok oryginału" nie jest zgadywaniem.
+   */
+  async placeNear({ nodeId, width, height, gap = 80, prefer, move = false, name } = {}) {
+    const node = await getNode(nodeId)
+    const parent = node.parent
+    const targetWidth = Number(width || node.width)
+    const targetHeight = Number(height || node.height)
+    const siblings = parent && 'children' in parent ? parent.children.filter((child) => child.id !== node.id) : []
+    const boxes = siblings
+      .map((child) => {
+        const box = child.absoluteBoundingBox
+        return box ? { x: box.x, y: box.y, width: box.width, height: box.height } : null
+      })
+      .filter(Boolean)
+    const anchor = node.absoluteBoundingBox || { x: node.x, y: node.y, width: node.width, height: node.height }
+    const space = Number(gap)
+    const sides = prefer || ['below', 'right', 'above', 'left']
+    const candidate = (side) => {
+      if (side === 'below') return { x: anchor.x, y: anchor.y + anchor.height + space, side }
+      if (side === 'above') return { x: anchor.x, y: anchor.y - targetHeight - space, side }
+      if (side === 'right') return { x: anchor.x + anchor.width + space, y: anchor.y, side }
+      return { x: anchor.x - targetWidth - space, y: anchor.y, side }
+    }
+    const collides = (rect) =>
+      boxes.some((box) => !(rect.x + targetWidth <= box.x || rect.x >= box.x + box.width || rect.y + targetHeight <= box.y || rect.y >= box.y + box.height))
+
+    for (const side of sides) {
+      const spot = candidate(side)
+      if (collides(spot)) continue
+      if (move) {
+        node.x = spot.x
+        node.y = spot.y
+        if (name) node.name = String(name)
+      }
+      return { ...spot, width: targetWidth, height: targetHeight, free: true, moved: Boolean(move) }
+    }
+    const fallback = candidate(sides[0])
+    if (move) {
+      node.x = fallback.x
+      node.y = fallback.y
+      if (name) node.name = String(name)
+    }
+    return {
+      ...fallback,
+      width: targetWidth,
+      height: targetHeight,
+      free: false,
+      moved: Boolean(move),
+      note: 'no side was free — placed anyway, check the result or ask the user where it should go',
+    }
+  },
+
+  /** Tworzy lub aktualizuje styl lokalny (text, paint, effect, grid) i zwraca jego id. */
+  async saveStyle({ kind = 'paint', name, font, fontSize, lineHeight, letterSpacing, color, paints, effects, layoutGrids } = {}) {
+    if (!name) fail('missing style name')
+    const kinds = { text: textStyles, paint: paintStyles }
+    const existing = await (kinds[kind] || (() => Promise.resolve([])))()
+    const found = existing.find((style) => style.name === String(name))
+
+    if (kind === 'text') {
+      const style = found || figma.createTextStyle()
+      style.name = String(name)
+      if (font) {
+        await figma.loadFontAsync(font)
+        style.fontName = font
+      }
+      if (fontSize !== undefined) style.fontSize = Number(fontSize)
+      if (lineHeight !== undefined) style.lineHeight = typeof lineHeight === 'number' ? { unit: 'PIXELS', value: lineHeight } : lineHeight
+      if (letterSpacing !== undefined) style.letterSpacing = typeof letterSpacing === 'number' ? { unit: 'PIXELS', value: letterSpacing } : letterSpacing
+      return { id: style.id, name: style.name, kind, created: !found }
+    }
+
+    if (kind === 'paint') {
+      const style = found || figma.createPaintStyle()
+      style.name = String(name)
+      if (color) {
+        const solid = parseHex(color)
+        style.paints = [{ type: 'SOLID', color: { r: solid.r, g: solid.g, b: solid.b }, opacity: solid.a === undefined ? 1 : solid.a }]
+      }
+      else if (Array.isArray(paints)) style.paints = paints
+      else fail('paint style needs color or paints[]')
+      return { id: style.id, name: style.name, kind, created: !found }
+    }
+
+    if (kind === 'effect') {
+      if (!Array.isArray(effects)) fail('effect style needs effects[]')
+      const all = await (typeof figma.getLocalEffectStylesAsync === 'function' ? figma.getLocalEffectStylesAsync() : figma.getLocalEffectStyles())
+      const match = all.find((style) => style.name === String(name))
+      const style = match || figma.createEffectStyle()
+      style.name = String(name)
+      style.effects = effects
+      return { id: style.id, name: style.name, kind, created: !match }
+    }
+
+    if (kind === 'grid') {
+      if (!Array.isArray(layoutGrids)) fail('grid style needs layoutGrids[]')
+      const all = await (typeof figma.getLocalGridStylesAsync === 'function' ? figma.getLocalGridStylesAsync() : figma.getLocalGridStyles())
+      const match = all.find((style) => style.name === String(name))
+      const style = match || figma.createGridStyle()
+      style.name = String(name)
+      style.layoutGrids = layoutGrids
+      return { id: style.id, name: style.name, kind, created: !match }
+    }
+
+    fail('kind must be text | paint | effect | grid')
+  },
+
   /** Tekst wewnątrz instancji: lista pól tekstowych i nadpisywanie ich treści (override). */
   async instanceText({ instanceId, overrides, list = false } = {}) {
     const instance = await getNode(instanceId)
