@@ -926,11 +926,11 @@
         if (masks.length === 0) return main
         if (masks.length === 1) {
           return main + '\n\nThe attached mask marks the only area that may change (' +
-            '"' + masks[0].name + '" in ' + masks[0].color + ').'
+            '"' + masks[0].name + '" in ' + masks[0].color + '). ' + INPAINT_HINT
         }
         const legend = masks.map((mask) => '"' + mask.name + '" in ' + mask.color).join('; ')
         return main + '\n\nThe last attached image is a colour map of the masked areas: ' + legend +
-          '. Change only the marked areas, keep everything else untouched.'
+          '. Change only the marked areas, keep everything else untouched. ' + INPAINT_HINT
       }
 
       // Unia masek (biel wygrywa) + kolorowanka referencji, którą model może przeczytać.
@@ -980,6 +980,11 @@
           colorMap: { filename: 'color-map.png', base64: colorMap.toDataURL('image/png').split(',')[1] },
         }
       }
+
+      // Model potrafi „wywalić” element, malując w to miejsce czarną plamę. Mówimy wprost,
+      // że obszar ma być odbudowany z otoczenia — to jest różnica między usunięciem a zamalowaniem.
+      const INPAINT_HINT = 'Rebuild that area from its surroundings: remove what was there and continue ' +
+        'the background, textures and lighting across it — no black, flat or empty patches.'
 
       // #mask2 -> '"mask 2" (marked #00b3ff)': maski maja nazwy i kolory, wiec wskazujesz je
       // w promptcie tak samo jak obrazy.
@@ -1313,6 +1318,8 @@
             size: dims.width + 'x' + dims.height,
             reasoning: $('reasoning').value || undefined,
             quality: $('quality').value || undefined,
+            // auto potrafi zwrócić RGBA; przezroczysty obszar na ciemnym tle to „czarna dziura”
+            background: state.mode === 'edit' ? 'opaque' : undefined,
             confirmCost: true,
           }
           if (state.mode === 'edit') {

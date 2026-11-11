@@ -347,6 +347,12 @@ function pumpImageQueue() {
         base64: bytes ? bytes.toString('base64') : null,
         bytes: bytes ? bytes.length : 0,
       }
+      // PNG z kanałem alfa wygląda na czarną dziurę, gdy trafi na ciemne tło —
+      // lepiej powiedzieć to w logu niż udawać, że obraz jest zepsuty.
+      if (bytes && bytes.length > 26 && bytes.toString('latin1', 12, 16) === 'IHDR' && bytes[25] === 6) {
+        job.result.hasAlpha = true
+        job.log.push('result has an alpha channel — transparent areas render black on a dark canvas')
+      }
       job.status = 'done'
     })
     .catch((err) => {
