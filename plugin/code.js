@@ -866,6 +866,15 @@ figma.ui.onmessage = async (msg) => {
     }
   }
 
+  // Cała seria to jeden krok undo — inaczej ⌘Z cofa pojedynczą operację z dwudziestu.
+  if (ok && results.length > 1) {
+    try {
+      figma.commitUndo()
+    } catch (err) {
+      /* starsze API bez commitUndo — nie blokujemy wyniku */
+    }
+  }
+
   figma.ui.postMessage({ type: 'result', id: msg.id, ok, results, error })
   // Pełny błąd i tak wraca do agenta; w Figmie pokazujemy skrót, żeby toast nie zasłaniał płótna.
   if (!ok) figma.notify('Figma Bridge: ' + String(error).slice(0, 120), { error: true })
