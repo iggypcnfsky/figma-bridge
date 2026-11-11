@@ -103,6 +103,9 @@ chips (`1:1@1k`, `16:9@2k`, `9:16@1080`), and the cost estimate is shown before 
   finishes; untick `auto-insert` to place it by hand.
 - **Fill selection** applies it as a fill to whatever is selected.
 - **Copy** in the log header puts the whole run log on the clipboard — handy when reporting a failure.
+- **Exact size**: type `W` / `H` and hit **Use**; the preset chip becomes those pixels. **+** saves the
+  pair as a named preset (`presets.json`, server-side, so it survives plugin reloads and is shared
+  with the CLI), which then appears as its own chip.
 - **Edit** uses the current selection as the reference (`exportAsync` → server → `img edit`); picking a
   reference adds a preset chip with its exact dimensions and selects it, so the result keeps the
   reference's size instead of re-cropping it to a fixed aspect.

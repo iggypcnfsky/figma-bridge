@@ -55,6 +55,9 @@
       button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
       button svg { width: 12px; height: 12px; flex: 0 0 auto; }
       .check { flex-direction: row; align-items: center; gap: 5px; font-size: 10px; opacity: .85; }
+      #sizeRow input { width: 52px; text-align: center; }
+      #sizeRow span { opacity: .6; }
+      #sizeRow button { padding: 4px 7px; }
       .check input { width: auto; margin: 0; }
       .logbox { border: 1px solid var(--figma-color-border, #ddd); border-radius: 5px; }
       .loghead { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px 2px 6px; border-bottom: 1px solid var(--figma-color-border, #ddd); }
@@ -88,6 +91,14 @@
       <textarea id="prompt" placeholder="Describe the image…"></textarea>
 
       <div class="chips" id="presets"></div>
+
+      <div class="row" id="sizeRow">
+        <input id="sizeW" type="number" min="64" max="8192" step="8" placeholder="W" />
+        <span>×</span>
+        <input id="sizeH" type="number" min="64" max="8192" step="8" placeholder="H" />
+        <button id="applySize" title="Use these dimensions">Use</button>
+        <button id="savePreset" title="Save as a preset">+</button>
+      </div>
 
       <div class="pair">
         <label>reasoning <select id="reasoning"></select></label>
@@ -128,6 +139,8 @@
         schema: null,
         mode: 'gen',
         preset: '1:1@1024',
+        custom: { width: 1024, height: 1024 },
+        presets: [],
         ref: null,
         result: null,
         autoInsert: true,
@@ -196,6 +209,8 @@
           $('refInfo').textContent = msg.width + '×' + msg.height + ' from selection'
           // dopasuj wyjście do referencji: to jest sens edycji istniejącego obrazka
           state.preset = 'selection'
+          $('sizeW').value = Math.round(msg.width)
+          $('sizeH').value = Math.round(msg.height)
           renderChips()
           updateCost()
           return
@@ -240,6 +255,16 @@
         }
       }
 
+      async function loadPresets() {
+        try {
+          const data = await api('/image/presets')
+          state.presets = data.presets || []
+          renderChips()
+        } catch (err) {
+          log(err.message)
+        }
+      }
+
       async function loadSchema() {
         const model = $('model').value
         if (!model) return
@@ -279,6 +304,11 @@
         if (preset === 'selection' && state.ref) {
           return { width: Math.round(state.ref.width), height: Math.round(state.ref.height) }
         }
+        if (preset === 'custom') return { width: state.custom.width, height: state.custom.height }
+        if (preset.startsWith('p:')) {
+          const saved = state.presets[Number(preset.slice(2))]
+          if (saved) return { width: saved.width, height: saved.height }
+        }
         const [aspect, res] = preset.split('@')
         const [a, b] = aspect.split(':').map(Number)
         const long = /k$/i.test(res) ? parseFloat(res) * 1024 : Number(res)
@@ -288,7 +318,10 @@
       }
 
       function presetList() {
-        return state.ref ? ['selection', ...BASE_PRESETS] : [...BASE_PRESETS]
+        const list = state.ref ? ['selection', ...BASE_PRESETS] : [...BASE_PRESETS]
+        for (let index = 0; index < state.presets.length; index += 1) list.push('p:' + index)
+        list.push('custom')
+        return list
       }
 
       function renderChips() {
@@ -299,6 +332,13 @@
           if (preset === 'selection') {
             button.textContent = state.ref.width + '×' + state.ref.height
             button.title = 'match the size of the reference'
+          } else if (preset === 'custom') {
+            button.textContent = state.custom.width + '×' + state.custom.height
+            button.title = 'your own dimensions'
+          } else if (preset.startsWith('p:')) {
+            const saved = state.presets[Number(preset.slice(2))]
+            button.textContent = saved ? saved.label : preset
+            button.title = saved ? saved.width + '×' + saved.height + ' (saved preset)' : ''
           } else {
             button.textContent = preset.replace('@', ' @')
           }
@@ -307,6 +347,9 @@
             state.preset = preset
             for (const other of chips.children) other.classList.remove('on')
             button.classList.add('on')
+            const dims = dimsFromPreset(preset)
+            $('sizeW').value = dims.width
+            $('sizeH').value = dims.height
             updateCost()
           }
           chips.appendChild(button)
@@ -371,14 +414,12 @@
         log('queued')
         try {
           const dims = dimsFromPreset(state.preset)
-          const sizeFlag = state.preset === 'selection'
-            ? { size: dims.width + 'x' + dims.height }
-            : { preset: state.preset }
           const payload = {
             mode: state.mode,
             model: $('model').value,
             prompt,
-            ...sizeFlag,
+            // zawsze konkretne piksele — preset jest tylko sposobem ich wybrania
+            size: dims.width + 'x' + dims.height,
             reasoning: $('reasoning').value || undefined,
             quality: $('quality').value || undefined,
             confirmCost: true,
@@ -431,6 +472,7 @@
         toPlugin({ type: 'resize', width: size.width, height: size.height })
         if (state.expanded) {
           if (!Object.keys(state.models).length) loadModels()
+          loadPresets()
           toPlugin({ type: 'selectionInfo' })
         }
       }
@@ -468,7 +510,55 @@
 
       // ------------------------------------------------------------------ start
       renderChips()
+      loadPresets()
       $('go').innerHTML = ICONS.spark + '<span>Generate</span>'
+
+      function readSizeInputs() {
+        const width = Math.round(Number($('sizeW').value))
+        const height = Math.round(Number($('sizeH').value))
+        if (!Number.isFinite(width) || !Number.isFinite(height)) return log('enter both width and height')
+        if (width < 64 || height < 64 || width > 8192 || height > 8192) return log('size must be between 64 and 8192 px')
+        return { width, height }
+      }
+
+      $('sizeW').oninput = $('sizeH').oninput = () => {
+        const size = readSizeInputs()
+        if (!size) return
+        state.custom = size
+        if (state.preset === 'custom') {
+          renderChips()
+          updateCost()
+        }
+      }
+
+      $('applySize').onclick = () => {
+        const size = readSizeInputs()
+        if (!size) return
+        state.custom = size
+        state.preset = 'custom'
+        renderChips()
+        updateCost()
+      }
+
+      $('savePreset').onclick = async () => {
+        const size = readSizeInputs()
+        if (!size) return
+        try {
+          const data = await api('/image/presets', {
+            method: 'POST',
+            body: JSON.stringify({ width: size.width, height: size.height }),
+          })
+          state.presets = data.presets || []
+          state.preset = 'custom'
+          renderChips()
+          log(data.duplicate ? 'preset already exists' : 'preset saved: ' + size.width + '×' + size.height)
+        } catch (err) {
+          log(err.message)
+        }
+      }
+
+      $('sizeW').value = state.custom.width
+      $('sizeH').value = state.custom.height
 
       $('copyLog').innerHTML = ICONS.copy + '<span>Copy</span>'
       $('copyLog').onclick = async () => {

@@ -30,6 +30,22 @@ const IMG_FORGE_BIN = process.env.IMG_FORGE_BIN || join(HERE, '..', 'img-forge',
 const JOB_DIR = join(HERE, 'out', 'jobs')
 const IMAGE_JOB_TTL_MS = 30 * 60 * 1000
 const IMAGE_MAX_USD = Number(process.env.IMAGE_MAX_USD || 0.5)
+const PRESETS_FILE = join(HERE, 'presets.json')
+
+function readPresets() {
+  if (!existsSync(PRESETS_FILE)) return []
+  try {
+    const parsed = JSON.parse(readFileSync(PRESETS_FILE, 'utf8'))
+    return Array.isArray(parsed.presets) ? parsed.presets : []
+  } catch {
+    return []
+  }
+}
+
+function writePresets(presets) {
+  writeFileSync(PRESETS_FILE, JSON.stringify({ presets }, null, 2) + '\n')
+  return presets
+}
 
 // Bez tokena (jest zbędny: FAL_KEY i tak leży na dysku, więc lokalny proces może go przeczytać).
 // Zamiast tego twardo odrzucamy żądania z obcym Origin — to broni przed stroną WWW,
@@ -352,6 +368,35 @@ async function handle(req, res) {
     } catch (err) {
       return json(res, 500, { error: err.message })
     }
+  }
+
+  if (req.method === 'GET' && path === '/image/presets') {
+    if (foreignOrigin(req)) return json(res, 403, { error: 'only the Figma plugin may call this' })
+    return json(res, 200, { ok: true, presets: readPresets() })
+  }
+
+  if (req.method === 'POST' && path === '/image/presets') {
+    if (foreignOrigin(req)) return json(res, 403, { error: 'only the Figma plugin may call this' })
+    let body
+    try {
+      body = await readBody(req)
+    } catch (err) {
+      return json(res, 400, { error: err.message })
+    }
+    const width = Math.round(Number(body.width))
+    const height = Math.round(Number(body.height))
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width < 64 || height < 64 || width > 8192 || height > 8192) {
+      return json(res, 400, { error: 'width/height must be integers between 64 and 8192' })
+    }
+    const label = String(body.label || `${width}×${height}`).slice(0, 40)
+    const presets = readPresets()
+    if (presets.some((preset) => preset.width === width && preset.height === height)) {
+      return json(res, 200, { ok: true, presets, duplicate: true })
+    }
+    presets.push({ label, width, height })
+    writePresets(presets)
+    log(`preset added: ${label} (${width}×${height})`)
+    return json(res, 201, { ok: true, presets })
   }
 
   if (req.method === 'POST' && path === '/image/jobs') {
