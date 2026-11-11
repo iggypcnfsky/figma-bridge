@@ -1502,6 +1502,7 @@ async function uiSelectionInfo() {
     count: selection.length,
     name: selection[0] ? selection[0].name : null,
     nodeType: selection[0] ? selection[0].type : null,
+    page: figma.currentPage.name,
   })
 }
 

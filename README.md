@@ -136,7 +136,7 @@ Click `⌃` in the status bar. The window expands to `360×668` with two tabs.
 |---|---|
 | **Model** | populated from `GET /image/models` (a small registry in `img-forge/models.json`) |
 | **reasoning / quality** | populated from that model's **OpenAPI schema**, so the dropdowns can only offer values the endpoint accepts; a model without the field hides it |
-| **Use selection / Add image…** | references for Edit: the selected frame (exported at 2×) or files from disk, as many as you drop; thumbnails with ✕ to drop one |
+| **Use selection / Add selection / Add image…** | references for Edit: *Use selection* makes the selected frame the base (exported at 2×, sets the output size), *Add selection* appends another canvas selection as `#image2`, `#image3`…, *Add image…* takes files from disk; thumbnails with ✕ to drop one |
 | **Paint mask… / From selection** | constrain the edit to an area: paint over the reference with the brush (erase with `E`), or turn a white-on-black frame into a mask |
 | **Corner grips** | any of the four corners drags the window (double-click resets); the preview and the mask canvas grow with it, and the size is remembered |
 | **Prompt** | text; for Edit this describes the change |

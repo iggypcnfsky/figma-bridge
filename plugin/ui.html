@@ -69,6 +69,7 @@
       #log { font-size: 10px; opacity: .75; max-height: 46px; overflow: auto; white-space: pre-wrap; }
       #preview { width: 100%; max-height: 52vh; object-fit: contain; border-radius: 6px; border: 1px solid var(--figma-color-border, #ddd); background: #000; }
       #refInfo { font-size: 10px; opacity: .75; }
+      #refRow .row { flex-wrap: wrap; }
       .refs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
       .refs:empty { display: none; }
       .ref { position: relative; width: 42px; height: 42px; border-radius: 4px; overflow: hidden;
@@ -149,6 +150,7 @@
       <div id="refRow">
         <div class="row">
           <button id="useSel">Use selection</button>
+          <button id="addSel">Add selection</button>
           <button id="addRef">Add image…</button>
           <span id="refInfo">no reference</span>
         </div>
@@ -289,6 +291,7 @@
         agents: [],
         windows: [],
         panelSize: loadPanelSize(),
+        selMode: 'base',
         agentCmd: '',
         result: null,
         autoInsert: true,
@@ -373,6 +376,13 @@
             maskFromBase64(msg.base64).catch((err) => log('mask: ' + err.message))
             return
           }
+          if (state.selMode === 'extra') {
+            // „Add selection”: kolejny obraz z canvasu, dopisany jako #imageN
+            const ref = { filename: 'selection-' + (state.refs.length + 1) + '.png', base64: msg.base64, width: msg.width, height: msg.height, source: 'selection-extra' }
+            addRef(ref, false)
+            log('added #image' + state.refs.length + ' from the canvas (' + msg.width + '×' + msg.height + ')')
+            return
+          }
           addRef({ filename: 'selection.png', base64: msg.base64, width: msg.width, height: msg.height, source: 'selection' }, true)
           // dopasuj wyjście do referencji: to jest sens edycji istniejącego obrazka
           state.preset = 'selection'
@@ -383,8 +393,14 @@
           return
         }
         if (msg.type === 'selectionInfo') {
-          $('useSel').disabled = !msg.count
-          $('useSel').title = msg.count ? 'export "' + msg.name + '" as a reference' : 'select a frame first'
+          const page = msg.page ? ' on "' + msg.page + '"' : ''
+          for (const button of [$('useSel'), $('addSel')]) button.disabled = !msg.count
+          $('useSel').title = msg.count
+            ? 'use "' + msg.name + '" as the base reference'
+            : 'select a layer in this Figma window' + page + ' — the plug-in only sees this window\'s page'
+          $('addSel').title = msg.count
+            ? 'add "' + msg.name + '" as another reference (#imageN)'
+            : 'select a layer in this Figma window' + page
           return
         }
       }
@@ -1319,8 +1335,15 @@
       $('go').onclick = run
 
       $('useSel').onclick = () => {
+        state.selMode = 'base'
         toPlugin({ type: 'exportSelection' })
-        log('exporting selection…')
+        log('exporting selection as the base reference…')
+      }
+
+      $('addSel').onclick = () => {
+        state.selMode = 'extra'
+        toPlugin({ type: 'exportSelection' })
+        log('exporting selection as another reference…')
       }
 
       $('addRef').innerHTML = ICONS.image + '<span>Add image</span>'
