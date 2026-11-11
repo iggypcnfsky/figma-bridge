@@ -7,8 +7,8 @@ executes them through the Figma Plugin API and returns the results. No dependenc
 no cloud.
 
 On top of that, the same plugin window is an **image panel** backed by
-`img-forge` (a sibling checkout, not yet published): generate or edit images with fal.ai models and
-drop them straight onto the canvas.
+[`img-forge`](https://github.com/iggypcnfsky/img-forge) (a sibling checkout): generate or edit images
+with fal.ai models and drop them straight onto the canvas.
 
 **For agents:** [`AGENTS.md`](AGENTS.md) is written to be loaded as context.
 **Drop-in prompt for another agent:** [`docs/handoff-prompt.md`](docs/handoff-prompt.md).
@@ -92,7 +92,8 @@ and a 40-second generation never blocks Figma.
 
 **Prerequisites**
 
-- `img-forge/` checked out next to this repo (override with `IMG_FORGE_BIN`),
+- [`img-forge`](https://github.com/iggypcnfsky/img-forge) checked out next to this repo (override with
+  `IMG_FORGE_BIN`),
 - `FAL_KEY` in `img-forge/.env` (or `~/.config/img-forge/key`),
 - that is it — no extra npm packages, no SDK.
 

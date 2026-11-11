@@ -49,7 +49,8 @@ createEllipse createText createPage` · `update clone reparent remove goto` · `
 
 ## Images
 
-Need artwork? Generate it with the sibling `img-forge` CLI, then place it — generation stays outside
+Need artwork? Generate it with the sibling `img-forge` CLI
+(https://github.com/iggypcnfsky/img-forge), then place it — generation stays outside
 Figma so the API key never enters plugin code and a slow render cannot block the canvas:
 
 ```bash

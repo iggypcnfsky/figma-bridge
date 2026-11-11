@@ -62,7 +62,8 @@ Response `200` (all good) or `500` (an operation failed):
 
 `GET /status` → `{ ok, pluginConnected, pollPending, lastPollAt, queued, inFlight }`.
 
-Image generation (optional, requires a FAL_KEY and the sibling `img-forge` CLI):
+Image generation (optional; needs a `FAL_KEY` and the sibling CLI,
+<https://github.com/iggypcnfsky/img-forge>):
 
 - `GET /image/models`, `GET /image/schema?model=…`, `POST /image/jobs`, `GET /image/jobs/:id`
 - no token; requests carrying a foreign `Origin` get 403, and each job is capped by `--max-usd`
