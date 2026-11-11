@@ -15,12 +15,15 @@ executed inside Figma by a plugin, through the Figma Plugin API. No OAuth, no to
 
 ```bash
 cd <repo>/figma-bridge
-./bin/figma status     # {"ok":true,"pluginConnected":true,...}
+./bin/figma status     # {"ok":true,"pluginConnected":true,"clients":[...]}
+./bin/figma clients    # id, file, page of every connected Figma window
 ```
 
 - `pluginConnected: false` → stop. Ask the user to run `Plugins → Development → Figma Bridge`
   in the window of the file they want touched. Retrying does not help.
 - `503` from `/run` means the same thing. `504 PLUGIN_GONE` means they closed the plugin window.
+- `409` means several Figma windows are connected and none was chosen. Pick the file the user named
+  (`--file <NAME>`) or a client id (`--client <ID>`); never retry blindly, or you may edit the wrong file.
 
 ## The loop
 

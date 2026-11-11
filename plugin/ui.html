@@ -138,6 +138,7 @@
         models: {},
         schema: null,
         mode: 'gen',
+        identity: null,
         preset: '1:1@1024',
         custom: { width: 1024, height: 1024 },
         presets: [],
@@ -167,12 +168,19 @@
 
       // ---------------------------------------------------------------- mostek
       // Ten sam long-poll co wcześniej: to on utrzymuje połączenie agenta z Figmą.
+      function pollUrl() {
+        const params = new URLSearchParams({ client: state.identity ? state.identity.clientId : 'starting' })
+        if (state.identity && state.identity.file) params.set('file', state.identity.file)
+        if (state.identity && state.identity.page) params.set('page', state.identity.page)
+        return BASE + '/poll?' + params.toString()
+      }
+
       async function bridgeLoop() {
         for (;;) {
           const ctrl = new AbortController()
           const timer = setTimeout(() => ctrl.abort(), 40000)
           try {
-            const res = await fetch(BASE + '/poll', { cache: 'no-store', signal: ctrl.signal })
+            const res = await fetch(pollUrl(), { cache: 'no-store', signal: ctrl.signal })
             clearTimeout(timer)
             const job = await res.json()
             if (job && job.id) {
@@ -190,6 +198,11 @@
       window.onmessage = async (event) => {
         const msg = event.data && event.data.pluginMessage
         if (!msg) return
+        if (msg.type === 'identity') {
+          state.identity = msg
+          setStatus('ready · ' + String(msg.file || '').slice(0, 18), 'ok', msg.file + ' / ' + msg.page)
+          return
+        }
         if (msg.type === 'result') {
           const okCount = (msg.results || []).filter((r) => r.ok).length
           if (!state.busy) setStatus(msg.ok ? 'ok · ' + okCount : 'error', msg.ok ? 'ok' : 'bad', msg.error || '')

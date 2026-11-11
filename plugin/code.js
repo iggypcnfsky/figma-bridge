@@ -4,6 +4,21 @@
 
 figma.showUI(__html__, { width: 232, height: 34, themeColors: true })
 
+// Każde okno pluginu ma własną tożsamość, żeby serwer wiedział, do którego pliku kieruje zadanie.
+const CLIENT_ID = 'c' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4)
+
+function sendIdentity() {
+  figma.ui.postMessage({
+    type: 'identity',
+    clientId: CLIENT_ID,
+    file: figma.root.name,
+    page: figma.currentPage.name,
+  })
+}
+
+sendIdentity()
+figma.on('currentpagechange', sendIdentity)
+
 // -------------------------------------------------------------------- helpers
 
 function fail(message) {

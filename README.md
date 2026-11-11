@@ -45,6 +45,10 @@ agent ──HTTP──▶ server.mjs (localhost:3847) ◀──long-poll── p
   `remove`, `export`, `imageFill`, `variables`, `varFill`, `exec`.
 - `plugin/ui.html` — the status bar and the image panel.
 
+Several Figma windows may run the plugin at once. Each reports an id, file and page, and the server
+routes by them: a single window is used automatically, ambiguity returns `409` with the list instead of
+answering from the wrong file (`./bin/figma clients`, `--file`, `--client`).
+
 ## Install
 
 Requires Node ≥ 20 and the Figma desktop app.
@@ -69,6 +73,8 @@ After editing plugin files, re-run the plugin; manifest changes require a re-imp
 ## Usage
 
 ```bash
+./bin/figma clients                        # which Figma windows are connected
+./bin/figma --file ITHAKA selection 2      # target one file when several are open
 ./bin/figma selection 2
 ./bin/figma op '{"op":"createFrame","name":"Card","width":320,"height":200,"fill":"#0B0B0F","props":{"cornerRadius":16,"layoutMode":"VERTICAL","paddingTop":24,"itemSpacing":12}}'
 ./bin/figma run '[

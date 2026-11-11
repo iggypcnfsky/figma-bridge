@@ -88,9 +88,23 @@ const queue = []
 /** @type {Map<string,{resolve:(v:any)=>void, reject:(e:Error)=>void, timer:NodeJS.Timeout}>} */
 const pending = new Map()
 /** @type {null | {res:import('node:http').ServerResponse, timer:NodeJS.Timeout}} */
-let waiter = null
+/**
+ * Plugin instances keyed by their own client id. Several Figma windows can run the plugin at once
+ * (different files, or the same file twice); a single shared waiter made their requests race and
+ * answered from whichever window happened to hold the poll.
+ * @type {Map<string, {res: import('node:http').ServerResponse, timer: NodeJS.Timeout, info: {client: string, file: string|null, page: string|null, since: number}}>}
+ */
+const waiters = new Map()
 let lastPollAt = 0
 let connectedAt = null
+
+const clientsList = () =>
+  [...waiters.entries()].map(([client, entry]) => ({
+    client,
+    file: entry.info.file,
+    page: entry.info.page,
+    connectedSeconds: Math.round((Date.now() - entry.info.since) / 1000),
+  }))
 
 const now = () => new Date().toISOString().slice(11, 23)
 const log = (...a) => console.log(`[bridge ${now()}]`, ...a)
@@ -152,14 +166,32 @@ function readBody(req) {
 }
 
 /** Hands queued work to the waiting plugin (if it is polling and the queue is non-empty). */
+function matches(entry, job) {
+  if (job.client) return entry.info.client === job.client
+  if (job.file) return entry.info.file === job.file
+  return true
+}
+
 function dispatch() {
-  if (!waiter || queue.length === 0) return
-  const job = queue.shift()
-  const { res, timer } = waiter
-  waiter = null
-  clearTimeout(timer)
-  log(`→ job ${job.id.slice(0, 8)} (${job.ops.length} ops${job.dryRun ? ', dry-run' : ''})`)
-  json(res, 200, job)
+  let progressed = true
+  while (progressed && queue.length > 0 && waiters.size > 0) {
+    progressed = false
+    for (const [index, job] of queue.entries()) {
+      const chosen = [...waiters.entries()].find(([, entry]) => matches(entry, job))
+      if (!chosen) continue
+      const [client, entry] = chosen
+      queue.splice(index, 1)
+      waiters.delete(client)
+      clearTimeout(entry.timer)
+      log(
+        `→ job ${job.id.slice(0, 8)} (${job.ops.length} ops${job.dryRun ? ', dry-run' : ''}) to ${client}` +
+          (entry.info.file ? ` [${entry.info.file}]` : ''),
+      )
+      json(entry.res, 200, job)
+      progressed = true
+      break
+    }
+  }
 }
 
 /** Builds CLI arguments for one image job. */
@@ -262,12 +294,12 @@ function enqueueImageJob(body) {
 }
 
 function isConnected() {
-  return waiter !== null || Date.now() - lastPollAt < DISCONNECT_GRACE_MS
+  return waiters.size > 0 || Date.now() - lastPollAt < DISCONNECT_GRACE_MS
 }
 
 // If the plugin disappears mid-run, do not wait for the timeout — fail fast.
 setInterval(() => {
-  if (pending.size === 0 || waiter !== null) return
+  if (pending.size === 0 || waiters.size > 0) return
   if (Date.now() - lastPollAt < DISCONNECT_GRACE_MS) return
   for (const [id, slot] of pending) {
     clearTimeout(slot.timer)
@@ -290,7 +322,8 @@ async function handle(req, res) {
       ok: true,
       port: PORT,
       pluginConnected: isConnected(),
-      pollPending: waiter !== null,
+      pollPending: waiters.size > 0,
+      clients: clientsList(),
       lastPollAt: lastPollAt || null,
       connectedSinceSeconds: connectedAt ? Math.round((Date.now() - connectedAt) / 1000) : null,
       queued: queue.length,
@@ -301,26 +334,36 @@ async function handle(req, res) {
 
   // --- long-poll od pluginu ---------------------------------------------
   if (req.method === 'GET' && path === '/poll') {
+    const client = String(url.searchParams.get('client') || 'anonymous')
+    const file = url.searchParams.get('file')
+    const page = url.searchParams.get('page')
     lastPollAt = Date.now()
     if (connectedAt === null) {
       connectedAt = Date.now()
       log('plugin connected')
     }
-    if (waiter) {
-      // a previous poll (e.g. a hung tab) — close it with an empty response
-      clearTimeout(waiter.timer)
-      try { json(waiter.res, 200, { idle: true }) } catch { /* already closed */ }
-      waiter = null
+
+    const previous = waiters.get(client)
+    if (previous) {
+      // ten sam klient polluje ponownie (np. odświeżony iframe) — zamykamy stary poll
+      clearTimeout(previous.timer)
+      try { json(previous.res, 200, { idle: true }) } catch { /* already closed */ }
+      waiters.delete(client)
     }
+
     const timer = setTimeout(() => {
-      if (waiter && waiter.res === res) waiter = null
+      const current = waiters.get(client)
+      if (current && current.res === res) waiters.delete(client)
       try { json(res, 200, { idle: true }) } catch { /* already closed */ }
     }, POLL_TIMEOUT_MS)
-    waiter = { res, timer }
+
+    waiters.set(client, { res, timer, info: { client, file, page, since: Date.now() } })
+    if (file) log(`client ${client} → ${file}${page ? ' / ' + page : ''}`)
     req.on('close', () => {
-      if (waiter && waiter.res === res) {
+      const current = waiters.get(client)
+      if (current && current.res === res) {
         clearTimeout(timer)
-        waiter = null
+        waiters.delete(client)
         lastPollAt = Date.now()
       }
     })
@@ -442,8 +485,49 @@ async function handle(req, res) {
         pluginConnected: false,
       })
     }
+
+    // Kilka okien Figmy może mieć plugin otwarty. Bez wskazania celu nie zgadujemy —
+    // odpowiedź z niewłaściwego pliku jest gorsza niż błąd.
+    const targetClient = body?.client ? String(body.client) : null
+    const targetFile = body?.file ? String(body.file) : null
+    const candidates = clientsList()
+    let resolvedClient = null
+    if (targetClient) {
+      if (!candidates.some((c) => c.client === targetClient)) {
+        return json(res, 409, {
+          error: `no connected client with id "${targetClient}"`,
+          clients: candidates,
+        })
+      }
+      resolvedClient = targetClient
+    } else if (targetFile) {
+      const matching = candidates.filter((c) => (c.file || '').toLowerCase() === targetFile.toLowerCase())
+      if (matching.length === 0) {
+        return json(res, 409, {
+          error: `no connected client for file "${targetFile}"`,
+          hint: 'open the Figma Bridge plugin in that file, or check `./bin/figma clients`',
+          clients: candidates,
+        })
+      }
+      if (matching.length > 1) {
+        return json(res, 409, {
+          error: `more than one plugin window is open for "${targetFile}" — target a client id instead`,
+          clients: matching,
+        })
+      }
+      resolvedClient = matching[0].client
+    } else if (candidates.length > 1) {
+      return json(res, 409, {
+        error: 'more than one Figma window is connected — say which one',
+        hint: 'pass --file <FILE_NAME> or --client <CLIENT_ID> (see ./bin/figma clients)',
+        clients: candidates,
+      })
+    } else if (candidates.length === 1) {
+      resolvedClient = candidates[0].client
+    }
+
     const id = randomUUID()
-    const job = { id, ops, dryRun: Boolean(body.dryRun), ts: Date.now() }
+    const job = { id, ops, dryRun: Boolean(body.dryRun), ts: Date.now(), client: resolvedClient, file: targetFile }
     const timeoutMs = Number(body.timeoutMs || DEFAULT_RUN_TIMEOUT_MS)
 
     const result = new Promise((resolve, reject) => {

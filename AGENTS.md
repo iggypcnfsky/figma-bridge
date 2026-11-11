@@ -71,6 +71,23 @@ Image generation (optional; needs a `FAL_KEY` and the sibling CLI,
 - if you can run the CLI directly, do that instead — the endpoint exists for the Figma panel,
   which humans use from the plugin window (Generate / Edit tabs, insert-as-rectangle or fill)
 
+## Several Figma windows at once
+
+Each plugin window reports an id, file and page on every poll, so the server can route precisely
+instead of guessing.
+
+```bash
+./bin/figma clients                       # id, file, page, uptime
+./bin/figma --file ITHAKA ping            # target by file name
+./bin/figma --client c1a2b3 ping          # target by client id
+FIGMA_BRIDGE_FILE=ITHAKA ./bin/figma run '[…]'
+```
+
+- one connected window → it is used automatically;
+- more than one and no target → `409` listing the clients. **Do not retry blindly**: ask which file the
+  user means, or read the file name from their prompt, then pass `--file`;
+- `409` also when the named file is not connected or two windows are open on it (then use `--client`).
+
 ## Operations
 
 Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.md).

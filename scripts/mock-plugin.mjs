@@ -4,6 +4,9 @@
  * Użycie: node scripts/mock-plugin.mjs [--ops]
  */
 const BASE = process.env.FIGMA_BRIDGE_URL || 'http://127.0.0.1:3847'
+const CLIENT = process.env.MOCK_CLIENT || 'mock1'
+const FILE = process.env.MOCK_FILE || 'Mock File'
+const POLL = `${BASE}/poll?client=${encodeURIComponent(CLIENT)}&file=${encodeURIComponent(FILE)}&page=Page%201`
 
 async function execute(op) {
   switch (op.op) {
@@ -45,7 +48,7 @@ async function main() {
   for (;;) {
     let job
     try {
-      const res = await fetch(`${BASE}/poll`, { cache: 'no-store' })
+      const res = await fetch(POLL, { cache: 'no-store' })
       job = await res.json()
     } catch (err) {
       console.error('[mock] brak serwera:', err.message)
@@ -72,7 +75,7 @@ async function main() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id: job.id, ok, results, error }),
     })
-    console.error(`[mock] obsłużono job #${n} (${job.ops.map((o) => o.op).join(', ')})`)
+    console.error(`[mock:${FILE}] obsłużono job #${n} (${job.ops.map((o) => o.op).join(', ')})`)
     if (process.env.MOCK_ONCE === '1' && n >= 1) process.exit(0)
   }
 }

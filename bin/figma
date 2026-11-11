@@ -10,16 +10,36 @@
 set -euo pipefail
 
 BASE="${FIGMA_BRIDGE_URL:-http://127.0.0.1:3847}"
+
+# Kilka okien Figmy może mieć plugin otwarty; --file/--client wybiera cel.
+TARGET_FILE="${FIGMA_BRIDGE_FILE:-}"
+TARGET_CLIENT="${FIGMA_BRIDGE_CLIENT:-}"
+ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --file) TARGET_FILE="${2:-}"; shift 2 ;;
+    --client) TARGET_CLIENT="${2:-}"; shift 2 ;;
+    *) ARGS+=("$1"); shift ;;
+  esac
+done
+set -- ${ARGS[@]+"${ARGS[@]}"}
+
 CMD="${1:-status}"
 shift || true
 
 die() { echo "figma: $*" >&2; exit 1; }
 
 post_run() {
-  local payload="$1" extra="${2:-}"
+  local payload="$1" extra="${2:-}" target=""
+  if [ -n "$TARGET_FILE" ]; then
+    target=",\"file\":\"${TARGET_FILE//\"/}\""
+  fi
+  if [ -n "$TARGET_CLIENT" ]; then
+    target="$target,\"client\":\"${TARGET_CLIENT//\"/}\""
+  fi
   curl -sS -X POST "$BASE/run" \
     -H 'content-type: application/json' \
-    --data "{\"ops\":$payload${extra}}" || die "cannot reach $BASE (is the server running?)"
+    --data "{\"ops\":$payload$target${extra}}" || die "cannot reach $BASE (is the server running?)"
 }
 
 pretty() {
@@ -34,6 +54,21 @@ except Exception:
 case "$CMD" in
   status|health)
     curl -sS "$BASE/status" | pretty
+    ;;
+
+  clients)
+    curl -sS "$BASE/status" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+clients = data.get("clients") or []
+if not clients:
+    print("no Figma window connected — run the Figma Bridge plugin in the target file")
+    sys.exit(0)
+for entry in clients:
+    print("%-12s %-22s %-24s %ss" % (entry["client"], entry.get("file") or "?", entry.get("page") or "?", entry.get("connectedSeconds", "?")))
+if len(clients) > 1:
+    print("\nseveral windows are open: pass --file <NAME> or --client <ID>")
+'
     ;;
 
   ping)
@@ -106,6 +141,6 @@ PY
     ;;
 
   *)
-    die "unknown command '$CMD' (status|ping|selection|pages|variables|op|run|export|image)"
+    die "unknown command '$CMD' (status|clients|ping|selection|pages|variables|op|run|export|image)"
     ;;
 esac
