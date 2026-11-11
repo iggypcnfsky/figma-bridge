@@ -162,6 +162,17 @@ the first reference with a brush (erase with `E`, *Clear*, *Use mask*) and sends
 reference's exact size, so nothing drifts. If you would rather build the mask in Figma, paint the area
 white on a black frame and use *From selection*; the panel thresholds it to pure black and white.
 
+**Several masks, several instructions.** Each mask in the list has its own name and its own
+instruction, and the panel runs them as separate passes: mask 1 with its instruction, then mask 2 on
+the *result* of mask 1, and so on. That is what makes "swap the wall for #image2" and "replace the
+window with #image3" independent — one fal request can only carry one mask, so N masks mean N calls,
+and the cost line says so (`≈ $0.0281 × 3 masks = $0.0843`). Masks without their own instruction fall
+back to the main prompt.
+
+**References are numbered.** The first thumbnail is `#image1`, the second `#image2`, and the numbers
+are drawn on the thumbnails. Write `#image2` in any instruction and the panel expands it to
+`reference image 2 (filename.png)` before sending — the model reads that, the API only sees order.
+
 ### Cost and limits
 
 Estimates come from token pricing in `img-forge/models.json` (`$30/1M` output image tokens, `$8/1M`
