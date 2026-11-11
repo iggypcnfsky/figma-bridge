@@ -1,0 +1,20 @@
+{
+  "name": "figma-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local agent ↔ Figma bridge over the Figma Plugin API. No OAuth, no tokens, no cloud.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "figma": "bin/figma"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "mock": "node scripts/mock-plugin.mjs",
+    "check": "node --check server.mjs && node --check plugin/code.js && node --check scripts/mock-plugin.mjs && node -e \"JSON.parse(require('fs').readFileSync('plugin/manifest.json','utf8'))\""
+  },
+  "keywords": ["figma", "figma-plugin", "agent", "dsh", "design-to-code"],
+  "license": "MIT"
+}

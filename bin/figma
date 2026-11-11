@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# figma — CLI do mostka Figma Bridge.
+#   figma status                    stan mostka i pluginu
+#   figma selection [depth]         co jest zaznaczone w Figmie
+#   figma pages                     lista stron
+#   figma op '<json>'               jedna operacja
+#   figma run '<json-array>'        kilka operacji po kolei
+#   figma run - <<< '[{"op":"ping"}]'
+#   figma export <nodeId> <plik> [format] [scale]
+set -euo pipefail
+
+BASE="${FIGMA_BRIDGE_URL:-http://127.0.0.1:3847}"
+CMD="${1:-status}"
+shift || true
+
+die() { echo "figma: $*" >&2; exit 1; }
+
+post_run() {
+  local payload="$1" extra="${2:-}"
+  curl -sS -X POST "$BASE/run" \
+    -H 'content-type: application/json' \
+    --data "{\"ops\":$payload${extra}}" || die "cannot reach $BASE (is the server running?)"
+}
+
+pretty() {
+  python3 -c 'import json,sys
+raw = sys.stdin.read()
+try:
+    print(json.dumps(json.loads(raw), indent=2, ensure_ascii=False))
+except Exception:
+    print(raw)'
+}
+
+case "$CMD" in
+  status|health)
+    curl -sS "$BASE/status" | pretty
+    ;;
+
+  ping)
+    post_run '[{"op":"ping"}]' | pretty
+    ;;
+
+  selection)
+    DEPTH="${1:-2}"
+    post_run "[{\"op\":\"selection\",\"depth\":$DEPTH}]" | pretty
+    ;;
+
+  pages)
+    post_run '[{"op":"pages"}]' | pretty
+    ;;
+
+  variables)
+    post_run '[{"op":"variables"}]' | pretty
+    ;;
+
+  op)
+    [ $# -ge 1 ] || die "podaj JSON operacji, np. figma op '{\"op\":\"status\"}'"
+    post_run "[$1]" | pretty
+    ;;
+
+  run)
+    if [ "${1:-}" = "-" ] || [ $# -eq 0 ]; then
+      PAYLOAD="$(cat)"
+    else
+      PAYLOAD="$1"
+    fi
+    EXTRA=""
+    for arg in "$@"; do
+      case "$arg" in
+        --dry-run) EXTRA=',"dryRun":true' ;;
+      esac
+    done
+    post_run "$PAYLOAD" "$EXTRA" | pretty
+    ;;
+
+  export)
+    NODE="${1:-}"; OUT="${2:-}"; FMT="${3:-PNG}"; SCALE="${4:-2}"
+    [ -n "$NODE" ] && [ -n "$OUT" ] || die "usage: figma export <nodeId> <file.png> [PNG|JPG|SVG|PDF] [scale]"
+    post_run "[{\"op\":\"export\",\"nodeId\":\"$NODE\",\"format\":\"$FMT\",\"scale\":$SCALE}]" > /tmp/figma-export.json
+    python3 - "$OUT" <<'PY'
+import json, sys, base64
+data = json.load(open('/tmp/figma-export.json'))
+res = (data.get('results') or [{}])[0]
+if not res.get('ok'):
+    sys.stderr.write('eksport nieudany: %s\n' % (res.get('error') or data.get('error')))
+    raise SystemExit(1)
+blob = base64.b64decode(res['value']['base64'])
+open(sys.argv[1], 'wb').write(blob)
+print('%s: %d B (%s, node %s)' % (sys.argv[1], len(blob), res['value']['format'], res['value']['nodeId']))
+PY
+    ;;
+
+  *)
+    die "nieznana komenda '$CMD' (status|ping|selection|pages|variables|op|run|export)"
+    ;;
+esac

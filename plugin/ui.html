@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        font: 10px/1.3 Inter, system-ui, -apple-system, sans-serif;
+        padding: 6px 8px;
+        background: transparent;
+        color: var(--figma-color-text, #111);
+        display: flex;
+        gap: 6px;
+        align-items: flex-start;
+        user-select: none;
+      }
+      #dot {
+        width: 6px; height: 6px; border-radius: 50%;
+        margin-top: 3px; flex: 0 0 auto; background: #9aa0a6;
+      }
+      #dot.ok { background: #1a7f37; }
+      #dot.busy { background: #bf8700; }
+      #dot.bad { background: #cf222e; }
+      #txt {
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="dot"></div>
+    <div id="txt" title="Figma Bridge · localhost:3847">connecting…</div>
+    <script>
+      const BASE = 'http://localhost:3847'
+      const dot = document.getElementById('dot')
+      const txt = document.getElementById('txt')
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+      function setStatus(msg, cls, tooltip) {
+        txt.textContent = msg
+        txt.title = tooltip || msg
+        dot.className = cls || ''
+      }
+
+      async function pollOnce() {
+        const ctrl = new AbortController()
+        const timer = setTimeout(() => ctrl.abort(), 40000)
+        try {
+          const res = await fetch(BASE + '/poll', { cache: 'no-store', signal: ctrl.signal })
+          if (!res.ok) throw new Error('HTTP ' + res.status)
+          return await res.json()
+        } finally {
+          clearTimeout(timer)
+        }
+      }
+
+      async function loop() {
+        for (;;) {
+          try {
+            const job = await pollOnce()
+            if (job && job.id) {
+              setStatus(job.ops.length + ' op…', 'busy')
+              parent.postMessage({ pluginMessage: { type: 'run', id: job.id, ops: job.ops, dryRun: job.dryRun } }, '*')
+            } else {
+              setStatus('ready', 'ok')
+            }
+          } catch (err) {
+            setStatus('no server', 'bad', 'No server on localhost:3847 — run: node server.mjs')
+            await sleep(1500)
+          }
+        }
+      }
+
+      window.onmessage = async (event) => {
+        const msg = event.data && event.data.pluginMessage
+        if (!msg || msg.type !== 'result') return
+        const ops = msg.results || []
+        const okCount = ops.filter((r) => r.ok).length
+        setStatus(msg.ok ? 'ok · ' + okCount : 'error', msg.ok ? 'ok' : 'bad', msg.ok ? 'ok · ' + okCount + ' ops' : msg.error)
+        try {
+          await fetch(BASE + '/result', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id: msg.id, ok: msg.ok, results: msg.results, error: msg.error }),
+          })
+        } catch (err) {
+          setStatus('no server', 'bad')
+        }
+      }
+
+      loop()
+    </script>
+  </body>
+</html>
