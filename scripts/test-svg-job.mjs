@@ -158,6 +158,22 @@ try {
   check('reference is sent as base64', Boolean(generation && generation.body.references && generation.body.references[0].base64), generation && generation.body.references)
   check('key travels as a bearer token', generation && generation.auth === 'Bearer sk_test_bridge', generation && generation.auth)
 
+  // generate bez referencji: sam prompt jest poprawnym wejściem
+  const promptOnly = await (await fetch(`${BASE}/svg/jobs`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ mode: 'generate', model: 'arrow-2', prompt: 'a plain prompt, no references' }),
+  })).json()
+  check('prompt-only generate is accepted', Boolean(promptOnly.id), promptOnly)
+  if (promptOnly.id) {
+    const done = await wait(promptOnly.id)
+    check('prompt-only generate finishes', done.status === 'done', done.error)
+    const sent = seen.filter((entry) => entry.path === 'generations').pop()
+    check('no references key is sent when there are none', sent && sent.body.references === undefined, sent && sent.body)
+    const dir2 = join(repo, 'out', 'jobs', promptOnly.id)
+    if (existsSync(dir2)) rmSync(dir2, { recursive: true, force: true })
+  }
+
   // trace: one image -> vectorizations, no prompt
   const traced = await (await fetch(`${BASE}/svg/jobs`, {
     method: 'POST',

@@ -1614,16 +1614,18 @@
         const trace = $('traceRef').checked
         const prompt = $('prompt').value.trim()
         if (!trace && !prompt) return log('prompt is empty')
-        if (state.refs.length === 0) {
-          log(trace ? 'trace needs a reference — select a frame, or use "Add image…"'
-            : 'vector needs a reference — select a frame, or use "Add image…"')
+        // Referencja jest wymagana tylko w trace. Generacja z samego promptu jest normalnym
+        // przypadkiem — Quiver przyjmuje `references` puste.
+        if (trace && state.refs.length === 0) {
+          log('trace needs a reference — select a frame, or use "Add image…"')
           return
         }
         try {
           const picked = trace ? state.refs.slice(0, 1) : state.refs
           const refs = []
           for (const ref of picked) refs.push(await shrinkVectorRef(ref))
-          log('queued · ' + (trace ? 'trace' : 'vector') + ' · ' + refs.length + ' reference(s) · ' + $('svgModel').value)
+          log('queued · ' + (trace ? 'trace' : 'vector') + ' · ' +
+            (refs.length ? refs.length + ' reference(s)' : 'prompt only') + ' · ' + $('svgModel').value)
           const size = explicitSize()
           const payload = {
             mode: trace ? 'vectorize' : 'generate',
