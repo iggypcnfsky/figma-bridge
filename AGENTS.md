@@ -82,6 +82,9 @@ Image generation (optional; needs a `FAL_KEY` and the sibling CLI,
 <https://github.com/iggypcnfsky/img-forge>):
 
 - `GET /image/models`, `GET /image/schema?model=…`, `POST /image/jobs`, `GET /image/jobs/:id`
+- `POST /image/jobs` with `mode: "edit"` takes `refs: [{filename, base64}, …]` — any number; the server
+  writes each to the job dir and passes one `--ref` per image. In the panel: **Edit → Use selection**
+  (exports the selected frame at 2×) or **Add image…** (files from disk, several at once)
 - no token; requests carrying a foreign `Origin` get 403, and each job is capped by `--max-usd`
 - a job spawns `img-forge` and returns `{status, log, result:{file, base64, width, height}}`
 - if you can run the CLI directly, do that instead — the endpoint exists for the Figma panel,

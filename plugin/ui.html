@@ -36,7 +36,7 @@
       #toggle { padding: 2px 6px; line-height: 1; }
 
       /* panel */
-      #panel { padding: 0 8px 8px; display: flex; flex-direction: column; gap: 6px; }
+      #panel { padding: 0 8px 8px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
       .tabs { display: flex; gap: 4px; }
       .tabs button { flex: 1; }
       .tabs button.on { background: var(--figma-color-bg-brand, #0d99ff); color: #fff; border-color: transparent; }
@@ -52,6 +52,14 @@
       #log { font-size: 10px; opacity: .75; max-height: 46px; overflow: auto; white-space: pre-wrap; }
       #preview { width: 100%; border-radius: 6px; border: 1px solid var(--figma-color-border, #ddd); background: #000; }
       #refInfo { font-size: 10px; opacity: .75; }
+      .refs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+      .refs:empty { display: none; }
+      .ref { position: relative; width: 42px; height: 42px; border-radius: 4px; overflow: hidden;
+        border: 1px solid var(--figma-color-border, #ddd); background: #000; }
+      .ref img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .ref button { position: absolute; top: 0; right: 0; padding: 0 3px; font-size: 9px; line-height: 12px;
+        border-radius: 0 0 0 4px; background: rgba(0,0,0,.6); color: #fff; border: 0; }
+      .ref button:hover { background: rgba(0,0,0,.85); }
       button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
       button svg { width: 12px; height: 12px; flex: 0 0 auto; }
       .check { flex-direction: row; align-items: center; gap: 5px; font-size: 10px; opacity: .85; }
@@ -102,9 +110,14 @@
       </div>
 
       <div id="genBody">
-      <div class="row" id="refRow">
-        <button id="useSel">Use selection</button>
-        <span id="refInfo">no reference</span>
+      <div id="refRow">
+        <div class="row">
+          <button id="useSel">Use selection</button>
+          <button id="addRef">Add image…</button>
+          <span id="refInfo">no reference</span>
+        </div>
+        <div id="refList" class="refs"></div>
+        <input id="refFile" type="file" accept="image/*" multiple class="hidden" />
       </div>
 
       <label>Model
@@ -167,7 +180,7 @@
       const BASE = 'http://localhost:3847'
       const BASE_PRESETS = ['1:1@1024', '16:9@2k', '9:16@1080']
       const COLLAPSED = { width: 232, height: 34 }
-      const EXPANDED = { width: 360, height: 668 }
+      const EXPANDED = { width: 360, height: 720 }
 
       const $ = (id) => document.getElementById(id)
       const dot = $('dot')
@@ -180,7 +193,7 @@
         preset: '1:1@1024',
         custom: { width: 1024, height: 1024 },
         presets: [],
-        ref: null,
+        refs: [],
         agents: [],
         windows: [],
         agentCmd: '',
@@ -261,8 +274,7 @@
             log('reference: ' + msg.error)
             return
           }
-          state.ref = msg
-          $('refInfo').textContent = msg.width + '×' + msg.height + ' from selection'
+          addRef({ filename: 'selection.png', base64: msg.base64, width: msg.width, height: msg.height, source: 'selection' }, true)
           // dopasuj wyjście do referencji: to jest sens edycji istniejącego obrazka
           state.preset = 'selection'
           $('sizeW').value = Math.round(msg.width)
@@ -273,7 +285,7 @@
         }
         if (msg.type === 'selectionInfo') {
           $('useSel').disabled = !msg.count
-          $('refInfo').textContent = msg.count ? msg.name : 'nothing selected'
+          $('useSel').title = msg.count ? 'export "' + msg.name + '" as a reference' : 'select a frame first'
           return
         }
       }
@@ -356,9 +368,48 @@
       }
 
       // ---------------------------------------------------------------- koszt
+      // ------------------------------------------------------------ referencje
+      const primaryRef = () => state.refs[0] || null
+
+      function addRef(ref, replaceSameSource) {
+        if (replaceSameSource) state.refs = state.refs.filter((entry) => entry.source !== ref.source)
+        state.refs.push(ref)
+        renderRefs()
+        updateCost()
+      }
+
+      function removeRef(index) {
+        state.refs.splice(index, 1)
+        if (state.preset === 'selection' && !primaryRef()) state.preset = '1:1@1024'
+        renderRefs()
+        renderChips()
+        updateCost()
+      }
+
+      function renderRefs() {
+        const list = $('refList')
+        list.textContent = ''
+        state.refs.forEach((ref, index) => {
+          const box = document.createElement('div')
+          box.className = 'ref'
+          box.title = ref.filename + ' · ' + ref.width + '×' + ref.height
+          const img = document.createElement('img')
+          img.src = 'data:image/png;base64,' + ref.base64
+          img.alt = ref.filename
+          const remove = document.createElement('button')
+          remove.textContent = '✕'
+          remove.title = 'remove ' + ref.filename
+          remove.onclick = () => removeRef(index)
+          box.append(img, remove)
+          list.append(box)
+        })
+        const count = state.refs.length
+        $('refInfo').textContent = count === 0 ? 'no reference' : count + (count === 1 ? ' reference' : ' references')
+      }
+
       function dimsFromPreset(preset) {
-        if (preset === 'selection' && state.ref) {
-          return { width: Math.round(state.ref.width), height: Math.round(state.ref.height) }
+        if (preset === 'selection' && primaryRef()) {
+          return { width: Math.round(primaryRef().width), height: Math.round(primaryRef().height) }
         }
         if (preset === 'custom') return { width: state.custom.width, height: state.custom.height }
         if (preset.startsWith('p:')) {
@@ -374,7 +425,7 @@
       }
 
       function presetList() {
-        const list = state.ref ? ['selection', ...BASE_PRESETS] : [...BASE_PRESETS]
+        const list = primaryRef() ? ['selection', ...BASE_PRESETS] : [...BASE_PRESETS]
         for (let index = 0; index < state.presets.length; index += 1) list.push('p:' + index)
         list.push('custom')
         return list
@@ -386,7 +437,7 @@
         for (const preset of presetList()) {
           const button = document.createElement('button')
           if (preset === 'selection') {
-            button.textContent = state.ref.width + '×' + state.ref.height
+            button.textContent = primaryRef().width + '×' + primaryRef().height
             button.title = 'match the size of the reference'
           } else if (preset === 'custom') {
             button.textContent = state.custom.width + '×' + state.custom.height
@@ -422,7 +473,7 @@
         if (!base) return ($('cost').textContent = '')
         const dims = dimsFromPreset(state.preset)
         const tokens = (base * dims.width * dims.height) / (1024 * 1024)
-        const refs = state.mode === 'edit' && state.ref ? pricing.referenceTokensPerImage || 0 : 0
+        const refs = state.mode === 'edit' ? state.refs.length * (pricing.referenceTokensPerImage || 0) : 0
         const promptTokens = Math.max(1, Math.ceil(($('prompt').value || '').length / 4))
         const cost =
           (tokens * pricing.imageOutputTokensPerM) / 1e6 +
@@ -615,9 +666,9 @@
         if (state.busy) return
         const prompt = $('prompt').value.trim()
         if (!prompt) return log('prompt is empty')
-        if (state.mode === 'edit' && !state.ref) {
+        if (state.mode === 'edit' && state.refs.length === 0) {
           toPlugin({ type: 'exportSelection' })
-          log('waiting for the selection…')
+          log('edit needs a reference — select a frame, or use "Add image…"')
           return
         }
         state.busy = true
@@ -637,8 +688,8 @@
             quality: $('quality').value || undefined,
             confirmCost: true,
           }
-          if (state.mode === 'edit' && state.ref) {
-            payload.refs = [{ filename: 'selection.png', base64: state.ref.base64 }]
+          if (state.mode === 'edit' && state.refs.length > 0) {
+            payload.refs = state.refs.map((ref) => ({ filename: ref.filename, base64: ref.base64 }))
           }
           const job = await api('/image/jobs', { method: 'POST', body: JSON.stringify(payload) })
           log('job ' + job.id.slice(0, 8))
@@ -732,6 +783,40 @@
       $('useSel').onclick = () => {
         toPlugin({ type: 'exportSelection' })
         log('exporting selection…')
+      }
+
+      $('addRef').innerHTML = ICONS.image + '<span>Add image</span>'
+      $('addRef').onclick = () => $('refFile').click()
+
+      // Plik z dysku: tyle referencji, ile chcesz. Bez tego jedyną referencją była selekcja.
+      $('refFile').onchange = async (event) => {
+        const files = [...(event.target.files || [])]
+        event.target.value = ''
+        for (const file of files) {
+          if (file.size > 8 * 1024 * 1024) {
+            log(file.name + ' is larger than 8 MB — skipped')
+            continue
+          }
+          try {
+            const dataUrl = await new Promise((resolve, reject) => {
+              const reader = new FileReader()
+              reader.onload = () => resolve(reader.result)
+              reader.onerror = () => reject(new Error('cannot read ' + file.name))
+              reader.readAsDataURL(file)
+            })
+            const base64 = String(dataUrl).split(',')[1] || ''
+            const size = await new Promise((resolve) => {
+              const probe = new Image()
+              probe.onload = () => resolve({ width: probe.naturalWidth, height: probe.naturalHeight })
+              probe.onerror = () => resolve({ width: 0, height: 0 })
+              probe.src = dataUrl
+            })
+            addRef({ filename: file.name, base64, width: size.width, height: size.height, source: 'file' })
+            log('reference: ' + file.name + ' (' + size.width + '×' + size.height + ')')
+          } catch (err) {
+            log(err.message)
+          }
+        }
       }
 
       $('insert').onclick = () => {

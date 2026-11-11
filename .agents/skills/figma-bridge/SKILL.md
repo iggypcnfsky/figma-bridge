@@ -85,6 +85,10 @@ Design-work shortcuts worth knowing:
   redraw what the library already ships, and do not detach an instance to "fix" its text.
 - **spacing checks**: `{"op":"measure","a":"1:2","b":"1:3"}` returns gaps per side and centre distance;
   use it instead of exporting a screenshot to judge alignment.
+- **image references for editing**: the panel's Edit tab takes **Use selection** (exports the selected
+  frame at 2×) or **Add image…** (any number of files; thumbnails, ✕ to drop one). Over HTTP that is
+  `{"mode":"edit","refs":[{"filename","base64"}…],"prompt":…}` on `/image/jobs`, and from a terminal
+  `img edit --ref a.png --ref b.png` (repeatable, plus `--ref-url`, `--mask`, `--markup`).
 - **styles**: `saveStyle` creates or updates a `text` / `paint` / `effect` / `grid` style by name, and
   `applyStyle` applies it. Create the token once, apply it everywhere.
 - **changing type on existing text** is the `text` op — not `exec`, and not loose assignments:

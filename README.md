@@ -135,6 +135,7 @@ Click `⌃` in the status bar. The window expands to `360×668` with two tabs.
 |---|---|
 | **Model** | populated from `GET /image/models` (a small registry in `img-forge/models.json`) |
 | **reasoning / quality** | populated from that model's **OpenAPI schema**, so the dropdowns can only offer values the endpoint accepts; a model without the field hides it |
+| **Use selection / Add image…** | references for Edit: the selected frame (exported at 2×) or files from disk, as many as you drop; thumbnails with ✕ to drop one |
 | **Prompt** | text; for Edit this describes the change |
 | **Size chips** | `1:1 @1024`, `16:9 @2k`, `9:16 @1080`, saved presets, and — in Edit — a chip with the reference's exact dimensions |
 | **W × H + Use** | any size between 64 and 8192 px; the active chip becomes those pixels |
@@ -145,9 +146,12 @@ Click `⌃` in the status bar. The window expands to `360×668` with two tabs.
 | **Fill selection** | replaces the fill of the selected node |
 | **Copy** | puts the whole log on the clipboard — for reporting a failure |
 
-**Edit** uses the current selection as the reference: the panel exports it (`exportAsync`, 2×), the
-server uploads it to the fal CDN, and `img edit` runs. The reference's dimensions become the active
-size, so an edit keeps its proportions instead of being re-cropped to a fixed aspect.
+**Edit** takes references — the current selection (`exportAsync`, 2×) or any number of image files
+picked from disk; each thumbnails under the row and can be removed with ✕. The server writes them into
+the job directory and passes one `--ref` per image to `img edit`, which uploads them to the fal CDN.
+The first reference's dimensions become the active size, so an edit keeps its proportions instead of
+being re-cropped to a fixed aspect. From the CLI it is the same thing without the panel:
+`img edit --prompt "…" --ref a.png --ref b.png` (also `--ref-url`, `--mask`, `--markup`).
 
 ### Cost and limits
 
