@@ -117,7 +117,8 @@ let connectedAt = null
 
 const clientsList = () =>
   [...known.entries()]
-    .filter(([client, info]) => busy.has(client) || Date.now() - info.lastSeen < DISCONNECT_GRACE_MS)
+    // an open long-poll IS the liveness signal: a plugin waiting for work does not re-poll
+    .filter(([client, info]) => busy.has(client) || waiters.has(client) || Date.now() - info.lastSeen < DISCONNECT_GRACE_MS)
     .map(([client, info]) => ({
       client,
       file: info.file,
