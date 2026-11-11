@@ -101,6 +101,24 @@ else:
     echo "$REPO"
     ;;
 
+  serve)
+    # DSH plugin trzyma serwer tylko dopóki sam żyje (SIGTERM przy unload), więc po jego
+    # przeładowaniu panel potrafi pokazać „No server”. Ta komenda stawia proces poza sesją.
+    if curl -sf -m 2 "$BASE/status" > /dev/null; then
+      echo "already running at $BASE"
+      exit 0
+    fi
+    cd "$REPO"
+    nohup node server.mjs >> /tmp/figma-bridge.log 2>&1 &
+    echo $! > /tmp/figma-bridge.pid
+    sleep 1.5
+    if curl -sf -m 2 "$BASE/status" > /dev/null; then
+      echo "started (pid $(cat /tmp/figma-bridge.pid), log: /tmp/figma-bridge.log)"
+    else
+      die "could not start — see /tmp/figma-bridge.log"
+    fi
+    ;;
+
   doctor)
     echo "repo:      $REPO"
     echo "server:    $BASE"
@@ -115,7 +133,7 @@ for entry in clients:
     print("             %s  %s / %s" % (entry.get("client"), entry.get("file") or "?", entry.get("page") or "?"))
 '
     else
-      echo "down — start it with: dsh (the Figma Bridge plugin does it) or: node \"$REPO/server.mjs\""
+      echo "down — start it with: figma serve (detached) or: node \"$REPO/server.mjs\""
     fi
     printf 'img-forge: '
     if [ -x "$REPO/../img-forge/img" ]; then
@@ -234,6 +252,6 @@ PY
     ;;
 
   *)
-    die "unknown command '$CMD' (status|clients|where|doctor|rules|ping|selection|pages|variables|op|run|export|image|svg)"
+    die "unknown command '$CMD' (status|clients|where|serve|doctor|rules|ping|selection|pages|variables|op|run|export|image|svg)"
     ;;
 esac

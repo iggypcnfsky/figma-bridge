@@ -89,6 +89,13 @@ node server.mjs            # leave it running (port 3847)
 The plugin window must stay open — it *is* the connection. Closing it disconnects the bridge.
 After editing plugin files, re-run the plugin; manifest changes require a re-import.
 
+The DSH plugin starts the bridge for you and stops it again when the plugin unloads. To keep it up
+independently — after a plugin reload the panel can briefly show **No server** — run:
+
+```bash
+figma serve
+```
+
 ## Usage
 
 `figma` is on `PATH` (a symlink to `bin/figma`), so these work from any directory:

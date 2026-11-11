@@ -26,8 +26,9 @@ figma rules         # project constraints: type floor, grid, frame size, version
 floor" — that no amount of reading the canvas will tell you. Treat `"confirmed": false` as an
 assumption to verify with the user, and `{}` as "ask, do not invent".
 
-If the command is missing, use `node "$(figma where)/server.mjs"` only after asking; do not `find` the
-repo, and do not guess paths.
+If the server is down, start it with `figma serve` (detached, survives the terminal). Only if `figma`
+itself is missing, fall back to `node "$(figma where)/server.mjs"` — do not `find` the repo, and do not
+guess paths.
 
 - `pluginConnected: false` → stop. Ask the user to run `Plugins → Development → Figma Bridge`
   in the window of the file they want touched. Retrying does not help.

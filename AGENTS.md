@@ -33,7 +33,8 @@ If `figma` is missing, the absolute path is printed by the skill or recoverable 
 starting the server yourself.
 
 1. The server is up: `figma status` → `{"ok":true,...}`.
-   If not: `node "$(figma where)/server.mjs" &` (a DSH plugin normally keeps it running).
+   If not: `figma serve` — starts it detached (the DSH plugin also spawns one, but stops that child
+   when the plugin unloads, which is why the panel can say "No server" after a reload).
 2. In Figma (desktop app), in the target file's window, the **Plugins → Development → Figma Bridge**
    plugin is running. The plugin window must stay open — it *is* the connection.
 3. `pluginConnected: true` in `/status`. If it is `false`, do not send operations — you will get 503.
