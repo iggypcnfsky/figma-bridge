@@ -87,14 +87,15 @@
       #refRow .row { flex-wrap: wrap; }
       .refs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
       .refs:empty { display: none; }
-      .ref { position: relative; width: 42px; height: 42px; border-radius: 4px; overflow: hidden;
+      .ref { position: relative; width: 68px; height: 68px; border-radius: 6px; overflow: hidden;
         border: 1px solid var(--figma-color-border, #ddd); background: #000; }
       .ref img { width: 100%; height: 100%; object-fit: cover; display: block; }
-      .ref button { position: absolute; top: 0; right: 0; padding: 0 3px; font-size: 9px; line-height: 12px;
-        border-radius: 0 0 0 4px; background: rgba(0,0,0,.6); color: #fff; border: 0; }
-      .ref button:hover { background: rgba(0,0,0,.85); }
-      .refnum { position: absolute; left: 0; bottom: 0; font-size: 8px; line-height: 11px; padding: 0 3px;
-        background: rgba(0,0,0,.65); color: #fff; border-radius: 0 4px 0 0; pointer-events: none; }
+      .ref button { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; padding: 0;
+        font-size: 12px; line-height: 20px; text-align: center; border-radius: 50%;
+        background: rgba(0,0,0,.72); color: #fff; border: 1px solid rgba(255,255,255,.35); }
+      .ref button:hover { background: #cf222e; border-color: #cf222e; }
+      .refnum { position: absolute; left: 0; bottom: 0; font-size: 10px; line-height: 15px; padding: 0 5px;
+        background: rgba(0,0,0,.72); color: #fff; border-radius: 0 5px 0 0; pointer-events: none; font-weight: 600; }
       #maskCanvas { max-width: 100%; border-radius: 5px; border: 1px solid var(--figma-color-border, #ddd);
         touch-action: none; cursor: crosshair; display: block; background: #000; margin: 0 auto; }
       #maskRow #maskInfo { font-size: 10px; opacity: .75; }
@@ -179,7 +180,6 @@
         <div class="row" id="maskRow">
           <button id="paintMask" title="Paint an area to change">Paint mask…</button>
           <button id="maskAdd" title="New mask — autosaves the current one (N)">+</button>
-          <button id="maskFromSel" title="Use a black/white frame as a mask">From selection</button>
           <span id="maskInfo">no masks</span>
         </div>
         <div id="maskList"></div>
@@ -304,7 +304,6 @@
         masks: [],
         maskEditingId: null,
         maskPainting: false,
-        maskFromSelection: false,
         maskBase: null,
         agents: [],
         windows: [],
@@ -389,12 +388,6 @@
         if (msg.type === 'selectionImage') {
           if (msg.error) {
             log('reference: ' + msg.error)
-            state.maskFromSelection = false
-            return
-          }
-          if (state.maskFromSelection) {
-            state.maskFromSelection = false
-            maskFromBase64(msg.base64).catch((err) => log('mask: ' + err.message))
             return
           }
           // wymiary bierzemy z samych pikseli PNG, nie z tego, co zgłosił plugin — inaczej
@@ -885,32 +878,6 @@
           if (saved) log('autosaved ' + saved.name + ' before switching')
         }
         await openMaskEditor(nextId)
-      }
-
-      // alternatywa: frame pomalowany na biało/czarno jako maska
-      async function maskFromBase64(base64) {
-        const image = await loadImage('data:image/png;base64,' + base64)
-        const canvas = document.createElement('canvas')
-        canvas.width = image.naturalWidth
-        canvas.height = image.naturalHeight
-        const ctx = canvas.getContext('2d')
-        ctx.drawImage(image, 0, 0)
-        const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height)
-        let white = 0
-        for (let i = 0; i < pixels.data.length; i += 4) {
-          const luminance = 0.299 * pixels.data[i] + 0.587 * pixels.data[i + 1] + 0.114 * pixels.data[i + 2]
-          const on = pixels.data[i + 3] > 40 && luminance >= 128
-          if (on) white += 1
-          pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = on ? 255 : 0
-          pixels.data[i + 3] = 255
-        }
-        ctx.putImageData(pixels, 0, 0)
-        const ratio = white / (canvas.width * canvas.height)
-        if (ratio === 0 || ratio === 1) {
-          return log('that selection is all ' + (ratio === 1 ? 'light' : 'dark') + ' — a mask needs a white shape on black')
-        }
-        const mask = addMask(canvas.toDataURL('image/png').split(',')[1], canvas.width, canvas.height)
-        log('added ' + mask.name + ' from selection: ' + Math.round(ratio * 100) + '% white (edit)')
       }
 
       // #image2 → „reference image 2 (filename)”: kolejność miniatur jest kolejnością obrazów
@@ -1635,11 +1602,6 @@
       $('maskPick').onchange = () => {
         const value = $('maskPick').value
         switchMask(value === '__new__' ? undefined : value).catch((err) => log('mask: ' + err.message))
-      }
-      $('maskFromSel').onclick = () => {
-        state.maskFromSelection = true
-        toPlugin({ type: 'exportSelection' })
-        log('exporting the selection as a mask…')
       }
       $('maskErase').onclick = () => {
         state.maskErase = !state.maskErase

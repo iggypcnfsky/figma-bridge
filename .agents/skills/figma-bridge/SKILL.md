@@ -92,7 +92,7 @@ Design-work shortcuts worth knowing:
   `img edit --ref a.png --ref b.png` (repeatable, plus `--ref-url`, `--mask`, `--markup`).
 - **masks**: `mask: {filename, base64}` next to `refs`, or `--mask file` in the CLI. fal expects
   **white = the area to change, black = keep**, at the reference's size; the panel paints it
-  (**Paint mask…**) or thresholds a white-on-black frame (**From selection**). Several masks = several
+  (**Paint mask…**, brush/erase, `+` for another). Several masks = several
   passes, each on the previous result and with its own instruction; N masks cost N calls.
   References are numbered (`#image1`, `#image2` — badges sit on the thumbnails) and the panel expands
   those into "reference image N (filename)" before sending.

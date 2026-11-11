@@ -137,7 +137,7 @@ Click `⌃` in the status bar. The window expands to `360×668` with two tabs.
 | **Model** | populated from `GET /image/models` (a small registry in `img-forge/models.json`) |
 | **reasoning / quality** | populated from that model's **OpenAPI schema**, so the dropdowns can only offer values the endpoint accepts; a model without the field hides it |
 | **Use selection / Add selection / Add image…** | references for Edit: *Use selection* makes the selected frame the base (exported at 2×, sets the output size), *Add selection* appends another canvas selection as `#image2`, `#image3`…, *Add image…* takes files from disk; thumbnails with ✕ to drop one |
-| **Paint mask… / From selection** | constrain the edit to an area: paint over the reference with the brush (erase with `E`), or turn a white-on-black frame into a mask |
+| **Paint mask…** | constrain the edit to an area: paint over the reference with the brush (erase with `E`), name the mask, `+` starts another in a new colour |
 | **Corner grips** | any of the four corners drags the window (double-click resets); the preview and the mask canvas grow with it, and the size is remembered |
 | **Prompt** | text; for Edit this describes the change |
 | **Size (W × H)** | the only size control: type it (64–8192 px) or derive it from a selection — *Use selection* fills both fields, so an edit matches its frame instead of being re-cropped |
@@ -164,11 +164,10 @@ same autosave — so `+`, paint, `+`, paint is the whole loop. Shortcuts while p
 `[` / `]` previous/next, `E` erase, `⌘S` save and close — dimmed, each in its own colour, so an adjacent region is easy to hit. The strokes are
 stored at the image's own resolution (1920×1080 reference ⇒ 1920×1080 mask, no upscaling at save) while the preview
 is only a window rendered at device pixels, so enlarging the panel makes it sharper instead of
-blockier. If you would rather build the mask in Figma, paint the area
-white on a black frame and use *From selection*; the panel thresholds it to pure black and white.
+blockier. The panel's brush is the way in — masks are painted there, at the reference's pixel size.
 
-**Several masks, one call.** Each mask in the list has its own name, its own colour and its own
-instruction, but fal accepts exactly one mask per request, so the panel combines them: the masks are
+**Several masks, one call.** Each mask in the list has its own name and colour, but fal accepts
+exactly one mask per request, so the panel combines them: the masks are
 OR-ed into a single white `mask_url` (the edit stays inside the marked regions) and a colour map of the
 reference — each area tinted with its mask's colour — is attached as the **last reference**, with a
 legend in the prompt:
