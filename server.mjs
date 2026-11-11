@@ -112,8 +112,54 @@ const busy = new Map()
 const known = new Map()
 /** job id → client it was handed to, so /result can free exactly that window. */
 const dispatched = new Map()
+/**
+ * Agents, not windows. A window is one Figma plugin; an agent is the process that sends operations,
+ * identified by `x-agent` (CLI: --agent / FIGMA_AGENT / the DSH session id). The panel shows them,
+ * names them, and can mint an identity for a new one.
+ * @type {Map<string, {id: string, name: string, firstSeen: number, lastSeen: number, runs: number, ops: number, client: string|null, busy: string|null}>}
+ */
+const agents = new Map()
+/** job id → agent id, so a finished batch can clear exactly that agent's busy flag. */
+const jobAgents = new Map()
 let lastPollAt = 0
 let connectedAt = null
+
+const AGENT_TTL_MS = 12 * 60 * 60 * 1000
+const AGENT_ID_RE = /^[a-z0-9][a-z0-9._:@-]{0,47}$/i
+let agentCounter = 0
+
+function agentLabel(id) {
+  if (id.startsWith('dsh:')) return 'DSH ' + id.slice(4, 10)
+  return id
+}
+
+function touchAgent(id) {
+  if (!id) return null
+  const key = String(id).slice(0, 48)
+  let entry = agents.get(key)
+  if (!entry) {
+    agentCounter += 1
+    entry = { id: key, name: agentLabel(key), firstSeen: Date.now(), lastSeen: Date.now(), runs: 0, ops: 0, client: null, busy: null }
+    agents.set(key, entry)
+    log(`agent ${key} joined`)
+  }
+  entry.lastSeen = Date.now()
+  return entry
+}
+
+const agentsList = () =>
+  [...agents.values()]
+    .filter((agent) => agent.busy || Date.now() - agent.lastSeen < AGENT_TTL_MS)
+    .sort((a, b) => b.lastSeen - a.lastSeen)
+    .map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      busy: agent.busy ? agent.busy.slice(0, 8) : null,
+      client: agent.client,
+      runs: agent.runs,
+      ops: agent.ops,
+      idleMs: Date.now() - agent.lastSeen,
+    }))
 
 const clientsList = () =>
   [...known.entries()]
@@ -201,6 +247,9 @@ function releaseJob(jobId) {
   dispatched.delete(jobId)
   const entry = busy.get(client)
   if (entry && entry.job === jobId) busy.delete(client)
+  const agent = agents.get(jobAgents.get(jobId))
+  jobAgents.delete(jobId)
+  if (agent && agent.busy === jobId) agent.busy = null
   dispatch()
 }
 
@@ -217,6 +266,15 @@ function dispatch() {
       waiters.delete(client)
       busy.set(client, { job: job.id, since: Date.now() })
       dispatched.set(job.id, client)
+      if (job.agent) {
+        jobAgents.set(job.id, job.agent)
+        const agent = agents.get(job.agent)
+        if (agent) {
+          agent.busy = job.id
+          agent.client = client
+          agent.lastSeen = Date.now()
+        }
+      }
       clearTimeout(entry.timer)
       log(
         `→ job ${job.id.slice(0, 8)} (${job.ops.length} ops${job.dryRun ? ', dry-run' : ''}) to ${client}` +
@@ -366,6 +424,8 @@ async function handle(req, res) {
       queued: queue.length,
       inFlight: pending.size,
       busy: [...busy.entries()].map(([client, entry]) => ({ client, job: entry.job.slice(0, 8), ms: Date.now() - entry.since })),
+      agents: agentsList(),
+      agentCount: agents.size,
       waitingJobs: [...pending.keys()].map((k) => k.slice(0, 8)),
     })
   }
@@ -517,6 +577,48 @@ async function handle(req, res) {
     })
   }
 
+  // --- agenci ------------------------------------------------------------
+  // „Kto jest na tym canvasie”: panel mianuje i nazywa agentów, agent sam się zgłasza przez x-agent.
+  if (path === '/agents' || path.startsWith('/agents/')) {
+    if (foreignOrigin(req)) {
+      return json(res, 403, { error: 'agent registry accepts the plugin panel only (Origin: null)' })
+    }
+    if (req.method === 'POST' && path === '/agents') {
+      let body
+      try { body = await readBody(req) } catch (err) { return json(res, 400, { error: err.message }) }
+      let id
+      do {
+        agentCounter += 1
+        id = 'agent-' + agentCounter
+      } while (agents.has(id))
+      const entry = touchAgent(id)
+      if (body?.name) entry.name = String(body.name).slice(0, 40)
+      log(`agent ${id} minted by the panel`)
+      return json(res, 200, {
+        id,
+        name: entry.name,
+        command: 'FIGMA_AGENT=' + id + ' figma status',
+        agents: agentsList(),
+      })
+    }
+    const id = decodeURIComponent(path.slice('/agents/'.length))
+    const entry = agents.get(id)
+    if (!entry) return json(res, 404, { error: 'unknown agent: ' + id, agents: agentsList() })
+    if (req.method === 'POST') {
+      let body
+      try { body = await readBody(req) } catch (err) { return json(res, 400, { error: err.message }) }
+      if (body?.name !== undefined) entry.name = String(body.name).slice(0, 40) || agentLabel(id)
+      entry.lastSeen = Date.now()
+      return json(res, 200, { agent: agentsList().find((a) => a.id === id), agents: agentsList() })
+    }
+    if (req.method === 'DELETE') {
+      agents.delete(id)
+      log(`agent ${id} removed`)
+      return json(res, 200, { removed: id, agents: agentsList() })
+    }
+    return json(res, 405, { error: 'use POST to rename or DELETE to remove' })
+  }
+
   if (req.method === 'POST' && path === '/run') {
     let body
     try { body = await readBody(req) } catch (err) { return json(res, 400, { error: err.message }) }
@@ -573,7 +675,12 @@ async function handle(req, res) {
     }
 
     const id = randomUUID()
-    const job = { id, ops, dryRun: Boolean(body.dryRun), ts: Date.now(), client: resolvedClient, file: targetFile }
+    const claimed = String(req.headers['x-agent'] || body?.agent || 'cli')
+    const agentId = AGENT_ID_RE.test(claimed) ? claimed : 'cli'
+    const agent = touchAgent(agentId)
+    agent.runs += 1
+    agent.ops += ops.length
+    const job = { id, ops, dryRun: Boolean(body.dryRun), ts: Date.now(), client: resolvedClient, file: targetFile, agent: agentId }
     const timeoutMs = Number(body.timeoutMs || DEFAULT_RUN_TIMEOUT_MS)
 
     const result = new Promise((resolve, reject) => {

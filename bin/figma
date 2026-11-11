@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # figma — CLI do mostka Figma Bridge.
 #   figma status                    stan mostka i pluginu
+#   figma agents                    kto pracuje na tym canvasie (agenci + ich stan)
 #   figma selection [depth]         co jest zaznaczone w Figmie
 #   figma pages                     lista stron
 #   figma op '<json>'               jedna operacja
@@ -18,11 +19,15 @@ BASE="${FIGMA_BRIDGE_URL:-http://127.0.0.1:3847}"
 # Kilka okien Figmy może mieć plugin otwarty; --file/--client wybiera cel.
 TARGET_FILE="${FIGMA_BRIDGE_FILE:-}"
 TARGET_CLIENT="${FIGMA_BRIDGE_CLIENT:-}"
+# Tożsamość agenta: panel widzi ją jako „kto jest na canvasie”. Bez tego każdy proces byłby „cli”.
+AGENT="${FIGMA_AGENT:-${DSH_SESSION_ID:+dsh:$DSH_SESSION_ID}}"
+AGENT="${AGENT:-cli}"
 ARGS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --file) TARGET_FILE="${2:-}"; shift 2 ;;
     --client) TARGET_CLIENT="${2:-}"; shift 2 ;;
+    --agent) AGENT="${2:-cli}"; shift 2 ;;
     *) ARGS+=("$1"); shift ;;
   esac
 done
@@ -43,6 +48,7 @@ post_run() {
   fi
   curl -sS -X POST "$BASE/run" \
     -H 'content-type: application/json' \
+    -H "x-agent: $AGENT" \
     --data "{\"ops\":$payload$target${extra}}" || die "cannot reach $BASE (is the server running?)"
 }
 
@@ -56,6 +62,23 @@ except Exception:
 }
 
 case "$CMD" in
+  agents)
+    curl -sS "$BASE/status" 2>/dev/null | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+agents = d.get("agents") or []
+if not agents:
+    print("no agent has touched this canvas yet")
+else:
+    for a in agents:
+        name = a.get("name") or a.get("id")
+        state = ("busy " + a["busy"]) if a.get("busy") else ("idle " + str(round(a.get("idleMs", 0) / 1000)) + "s")
+        print("%-22s %-14s runs=%-4s ops=%-5s id=%s" % (name, state, a.get("runs"), a.get("ops"), a.get("id")))
+    print()
+    print(str(d.get("agentCount", len(agents))) + " agent(s) known, " + str(len(d.get("clients") or [])) + " window(s) connected")
+' || die "cannot reach $BASE (is the server running?)"
+    ;;
+
   rules)
     if [ -f "$REPO/rules.json" ]; then
       cat "$REPO/rules.json"

@@ -18,6 +18,7 @@ executed inside Figma by a plugin, through the Figma Plugin API. No OAuth, no to
 ```bash
 figma doctor        # repo, server, connected windows, img-forge + FAL key in one shot
 figma clients       # id, file, page of every connected Figma window
+figma agents        # who is working on this canvas right now (names, runs, busy/idle)
 figma rules         # project constraints: type floor, grid, frame size, version naming
 ```
 
@@ -33,6 +34,8 @@ repo, and do not guess paths.
 - `503` from `/run` means the same thing. `504 PLUGIN_GONE` means they closed the plugin window.
 - `409` means several Figma windows are connected and none was chosen. Pick the file the user named
   (`--file <NAME>`) or a client id (`--client <ID>`); never retry blindly, or you may edit the wrong file.
+- Set `--agent <name>` (or `FIGMA_AGENT`) so the user sees you in the panel's Agents tab and in
+  `figma agents`; under DSH your session id is used automatically.
 - Another agent may be working in the same file. Batches are serialised per window, so you will not
   run inside each other — but your reads go stale between them, and the last write to a node wins.
   Re-read before a write that depends on state, stay inside your own frame subtree, keep batches

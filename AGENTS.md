@@ -129,8 +129,20 @@ What is still yours to handle — the bridge cannot see intent:
 
 ```bash
 figma clients     # busy: <job id> while a window is executing a batch
-figma status      # "busy": [{client, job}]
+figma status      # "busy": [{client, job}], "agents": [{id, name, runs, ops}]
+figma agents      # who is on this canvas, with a live/idle state per agent
 ```
+
+### Identities
+
+An agent identifies itself so the user (and the other agents) can tell who did what:
+
+- CLI: `--agent <name>` or `FIGMA_AGENT=<name>`; the value travels as the `x-agent` header.
+- Under DSH the session id is used automatically (`dsh:<session>`), so two sessions are already two
+  agents without configuration. A plain shell without either falls back to `cli`.
+- The panel's **Agents** tab lists them, renames them, forgets them, and mints a new id with the exact
+  command to run (`FIGMA_AGENT=agent-3 figma status`). Names live in server memory — a restart resets
+  them to their ids, and agents idle for 12 h drop off the list.
 
 If you need true isolation for a big build, ask the user to open the plugin in a second Figma window
 of the same file and target it with `--client`; the two lanes then work independently.
@@ -230,6 +242,8 @@ figma-bridge/
   .agents/skills/figma-bridge/SKILL.md ← skill (auto-loaded by DSH)
   scripts/mock-plugin.mjs ← protocol test without Figma
   scripts/test-typography.mjs ← unit test: text/update/applyStyle against a fake Figma API
+  scripts/test-serialisation.mjs ← one batch per window, parallel windows
+  scripts/test-agents.mjs ← agent registry: two agents, busy, mint, rename, forget
   scripts/demo-build.sh / make-demo-gif.py ← reproduce the demo GIF
   out/                 ← exports (gitignored)
 ```

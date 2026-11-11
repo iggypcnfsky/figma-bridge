@@ -10,6 +10,10 @@ On top of that, the same plugin window is an **image panel** backed by
 [`img-forge`](https://github.com/iggypcnfsky/img-forge) (a sibling checkout): generate or edit images
 with fal.ai models and drop them straight onto the canvas.
 
+The window also answers **who is on the canvas**: every agent that sends operations registers an
+identity, the panel shows it (Agents tab, plus a live counter in the status bar), and you can name it
+or mint one for a new agent.
+
 **For agents:** [`AGENTS.md`](AGENTS.md) is written to be loaded as context.
 **Drop-in prompt for another agent:** [`docs/handoff-prompt.md`](docs/handoff-prompt.md).
 **Skills:** [`.agents/skills/figma-bridge/SKILL.md`](.agents/skills/figma-bridge/SKILL.md) and the
@@ -40,7 +44,8 @@ agent ──HTTP──▶ server.mjs (localhost:3847) ◀──long-poll── p
 ```
 
 - `server.mjs` — job queue plus long-poll, no WebSockets, no npm packages.
-- `bin/figma` — CLI: `status`, `ping`, `selection`, `pages`, `variables`, `op`, `run`, `export`, `image`.
+- `bin/figma` — CLI: `status`, `agents`, `ping`, `selection`, `pages`, `variables`, `op`, `run`,
+  `export`, `image`.
 - `plugin/code.js` — around 30 operations: frames, text (`text` restyles existing type, whole node or
   a character range), shapes, instances, `update`, `clone`,
   `reparent`, `group`, `align`, `distribute`, `placeNear`, `measure`, layout grids (`setGrids`),
@@ -57,6 +62,10 @@ busy and hands it the next job only when the previous result is back, and the pl
 a second line of defence. Different windows are independent lanes. What the bridge cannot do is guess
 intent — reads still go stale between batches, and two agents writing the same node end with the last
 write winning, so partition by frame and keep batches short.
+
+Each agent has an identity: `--agent`, `FIGMA_AGENT`, or (under DSH) the session id automatically.
+`figma agents` lists them; the panel's **Agents** tab shows the same list with a live counter in the
+status bar, lets you rename one, forget it, or mint a fresh id with the command to start it.
 
 ## Install
 

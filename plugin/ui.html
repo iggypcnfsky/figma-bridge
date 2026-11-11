@@ -64,12 +64,33 @@
       .loghead button { padding: 1px 5px; font-size: 9px; gap: 3px; }
       .loghead button svg { width: 9px; height: 9px; }
       #log { padding: 4px 6px; }
+
+      /* agenci na canvasie */
+      .pill { font-size: 9px; line-height: 14px; padding: 0 5px; border-radius: 8px; min-width: 15px; text-align: center;
+        background: var(--figma-color-bg-brand-secondary, #e5f4ff); color: var(--figma-color-text-brand, #0d99ff); }
+      .pill.zero { background: var(--figma-color-bg-secondary, #f0f0f0); color: var(--figma-color-text-secondary, #777); }
+      #agentsBody { display: flex; flex-direction: column; gap: 6px; }
+      #agentList { display: flex; flex-direction: column; gap: 4px; }
+      .agent { display: flex; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 5px;
+        border: 1px solid var(--figma-color-border, #ddd); }
+      .agent .name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .agent .name:hover { text-decoration: underline dotted; cursor: text; }
+      .agent .meta { font-size: 9px; opacity: .6; white-space: nowrap; }
+      .agent button { padding: 0 5px; font-size: 10px; border-color: transparent; background: transparent; }
+      .agent button:hover { background: var(--figma-color-bg-secondary, #f5f5f5); }
+      .adot { width: 5px; height: 5px; border-radius: 50%; background: #1a7f37; flex: 0 0 auto; }
+      .adot.busy { background: #bf8700; }
+      .adot.idle { background: #9aa0a6; }
+      #agentCmd { font-size: 10px; opacity: .8; word-break: break-all; min-height: 12px; user-select: text; }
+      #agentsHint { font-size: 10px; opacity: .65; }
+      .addRow input { flex: 1 1 auto; min-width: 0; }
     </style>
   </head>
   <body>
     <div id="bar">
       <span id="dot"></span>
       <span id="status">connecting…</span>
+      <span id="agentsBadge" class="pill zero hidden" title="agents on this canvas">0</span>
       <button id="toggle" title="Image generation">⌃</button>
     </div>
 
@@ -77,8 +98,10 @@
       <div class="tabs">
         <button data-tab="gen" class="on">Generate</button>
         <button data-tab="edit">Edit</button>
+        <button data-tab="agents" title="Who is working on this canvas">Agents <span id="agentsTabCount" class="pill zero">0</span></button>
       </div>
 
+      <div id="genBody">
       <div class="row" id="refRow">
         <button id="useSel">Use selection</button>
         <span id="refInfo">no reference</span>
@@ -122,6 +145,21 @@
           <button id="fill">Fill selection</button>
         </div>
       </div>
+      </div>
+
+      <div id="agentsBody" class="hidden">
+        <div id="agentsHint">Every agent that sent an operation to this canvas. Names are yours to set.</div>
+        <div id="agentList"></div>
+        <div class="row addRow">
+          <input id="agentName" placeholder="name a new agent, e.g. claude-2" />
+          <button id="addAgent">Add</button>
+        </div>
+        <div id="agentCmd"></div>
+        <div class="row">
+          <button id="copyAgentCmd" class="hidden">Copy command</button>
+          <button id="refreshAgents" title="Refresh">Refresh</button>
+        </div>
+      </div>
 
     </div>
 
@@ -143,6 +181,9 @@
         custom: { width: 1024, height: 1024 },
         presets: [],
         ref: null,
+        agents: [],
+        windows: [],
+        agentCmd: '',
         result: null,
         autoInsert: true,
         expanded: false,
@@ -201,6 +242,8 @@
         if (msg.type === 'identity') {
           state.identity = msg
           setStatus('ready · ' + String(msg.file || '').slice(0, 18), 'ok', msg.file + ' / ' + msg.page)
+          refreshAgentBadge()
+          if (!state.badgeTimer) state.badgeTimer = setInterval(refreshAgentBadge, 5000)
           return
         }
         if (msg.type === 'result') {
@@ -388,11 +431,168 @@
           '≈ $' + (Math.ceil(cost * 10000) / 10000).toFixed(4) + ' · ' + dims.width + '×' + dims.height + ' · ' + quality
       }
 
+      // ---------------------------------------------------------------- agenci
+      // Kto pracuje na tym canvasie: jedno źródło prawdy to /status serwera.
+      async function refreshAgents() {
+        try {
+          const res = await fetch(BASE + '/status', { cache: 'no-store' })
+          const data = await res.json()
+          state.agents = data.agents || []
+          state.windows = data.clients || []
+          renderAgents()
+        } catch {
+          state.agents = []
+          renderAgents()
+        }
+      }
+
+      function agentState(agent) {
+        if (agent.busy) return { dot: 'busy', label: 'busy ' + agent.busy }
+        const seconds = Math.round((agent.idleMs || 0) / 1000)
+        if (seconds < 90) return { dot: '', label: 'idle ' + seconds + 's' }
+        return { dot: 'idle', label: Math.round(seconds / 60) + ' min ago' }
+      }
+
+      function renderAgents() {
+        const list = $('agentList')
+        list.textContent = ''
+        const agents = state.agents || []
+        for (const agent of agents) {
+          const row = document.createElement('div')
+          row.className = 'agent'
+          const dotEl = document.createElement('span')
+          const status = agentState(agent)
+          dotEl.className = 'adot ' + status.dot
+          const name = document.createElement('span')
+          name.className = 'name'
+          name.textContent = agent.name || agent.id
+          name.title = agent.id + ' — click to rename'
+          name.onclick = () => startRename(agent, name)
+          const meta = document.createElement('span')
+          meta.className = 'meta'
+          meta.textContent = status.label + ' · ' + agent.runs + '× · ' + agent.ops + ' ops'
+          const remove = document.createElement('button')
+          remove.textContent = '✕'
+          remove.title = 'forget this agent'
+          remove.onclick = () => removeAgent(agent)
+          row.append(dotEl, name, meta, remove)
+          list.append(row)
+        }
+        if (agents.length === 0) {
+          const empty = document.createElement('div')
+          empty.className = 'agent'
+          empty.innerHTML = '<span class="adot idle"></span><span class="name" style="opacity:.6">nobody yet — an agent appears on its first operation</span>'
+          list.append(empty)
+        }
+        const active = agents.filter((a) => a.busy || (a.idleMs || 0) < 5 * 60 * 1000).length
+        for (const badge of [$('agentsBadge'), $('agentsTabCount')]) {
+          badge.textContent = String(active)
+          badge.classList.toggle('zero', active === 0)
+        }
+        $('agentsBadge').classList.remove('hidden')
+        $('agentsBadge').title = agents.length
+          ? agents.map((a) => (a.name || a.id) + (a.busy ? ' (busy)' : '')).join(', ')
+          : 'no agents yet'
+        const windows = state.windows || []
+        $('agentsHint').textContent = windows.length > 1
+          ? windows.length + ' Figma windows connected — operations are serialised per window.'
+          : 'Every agent that sent an operation to this canvas. Names are yours to set.'
+      }
+
+      // inline edit — prompt()/confirm() are unreliable inside the plugin iframe
+      function startRename(agent, label) {
+        const input = document.createElement('input')
+        input.value = agent.name || agent.id
+        input.className = 'name'
+        input.style.minWidth = '0'
+        label.replaceWith(input)
+        input.focus()
+        input.select()
+        let done = false
+        const commit = async (save) => {
+          if (done) return
+          done = true
+          if (save) {
+            const next = input.value.trim()
+            try {
+              await fetch(BASE + '/agents/' + encodeURIComponent(agent.id), {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ name: next }),
+              })
+            } catch (err) {
+              log('rename failed: ' + err.message)
+            }
+          }
+          refreshAgents()
+        }
+        input.onkeydown = (event) => {
+          if (event.key === 'Enter') commit(true)
+          if (event.key === 'Escape') commit(false)
+        }
+        input.onblur = () => commit(true)
+      }
+
+      async function removeAgent(agent) {
+        // no confirm(): Figma's iframe blocks modals, and the agent comes back on its next operation
+        try {
+          await fetch(BASE + '/agents/' + encodeURIComponent(agent.id), { method: 'DELETE' })
+        } catch (err) {
+          log('remove failed: ' + err.message)
+        }
+        refreshAgents()
+      }
+
+      async function addAgent() {
+        const name = $('agentName').value.trim()
+        try {
+          const res = await fetch(BASE + '/agents', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ name }),
+          })
+          const data = await res.json()
+          state.agentCmd = data.command || ''
+          $('agentCmd').textContent = state.agentCmd
+          $('copyAgentCmd').classList.remove('hidden')
+          $('agentName').value = ''
+          refreshAgents()
+        } catch (err) {
+          log('could not add an agent: ' + err.message)
+        }
+      }
+
+      async function copyAgentCommand() {
+        const text = state.agentCmd || ''
+        if (!text) return
+        try {
+          await navigator.clipboard.writeText(text)
+        } catch {
+          const area = document.createElement('textarea')
+          area.value = text
+          document.body.appendChild(area)
+          area.select()
+          document.execCommand('copy')
+          area.remove()
+        }
+        const button = $('copyAgentCmd')
+        const previous = button.textContent
+        button.textContent = 'Copied'
+        setTimeout(() => { button.textContent = previous }, 1200)
+      }
+
       // ----------------------------------------------------------------- tryb
       function setMode(mode) {
         state.mode = mode
         for (const button of document.querySelectorAll('.tabs button')) {
           button.classList.toggle('on', button.dataset.tab === mode)
+        }
+        const agentsTab = mode === 'agents'
+        $('genBody').classList.toggle('hidden', agentsTab)
+        $('agentsBody').classList.toggle('hidden', !agentsTab)
+        if (agentsTab) {
+          refreshAgents()
+          return
         }
         $('refRow').classList.toggle('hidden', mode !== 'edit')
         $('go').innerHTML = ICONS.spark + '<span>' + (mode === 'edit' ? 'Edit image' : 'Generate') + '</span>'
@@ -487,12 +687,42 @@
           if (!Object.keys(state.models).length) loadModels()
           loadPresets()
           toPlugin({ type: 'selectionInfo' })
+          refreshAgents()
+          if (!state.agentTimer) state.agentTimer = setInterval(() => {
+            if (!state.expanded) return
+            if (state.mode === 'agents') refreshAgents()
+            else refreshAgentBadge()
+          }, 3000)
+        }
+      }
+
+      // poza zakładką Agents wystarczy licznik: mniej ruchu, ten sam sygnał
+      async function refreshAgentBadge() {
+        try {
+          const data = await (await fetch(BASE + '/status', { cache: 'no-store' })).json()
+          state.agents = data.agents || []
+          state.windows = data.clients || []
+          const active = state.agents.filter((a) => a.busy || (a.idleMs || 0) < 5 * 60 * 1000).length
+          const badge = $('agentsBadge')
+          badge.textContent = String(active)
+          badge.classList.remove('hidden')
+          badge.classList.toggle('zero', active === 0)
+          badge.title = state.agents.length
+            ? state.agents.map((a) => (a.name || a.id) + (a.busy ? ' (busy)' : '')).join(', ')
+            : 'no agents yet'
+        } catch {
+          /* server down — the status dot already says so */
         }
       }
 
       for (const button of document.querySelectorAll('.tabs button')) {
         button.onclick = () => setMode(button.dataset.tab)
       }
+
+      $('addAgent').onclick = () => addAgent()
+      $('refreshAgents').onclick = () => refreshAgents()
+      $('copyAgentCmd').onclick = () => copyAgentCommand()
+      $('agentName').onkeydown = (event) => { if (event.key === 'Enter') addAgent() }
 
       $('model').onchange = () => loadSchema()
       $('quality').onchange = () => updateCost()
