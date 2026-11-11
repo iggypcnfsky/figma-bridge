@@ -103,11 +103,28 @@ The plugin window also has a **Generate / Edit panel** for humans (model, size p
 Do not drive the panel programmatically — use the CLI; it exposes more (mask, variants, dry run).
 Presets saved in that panel live in `figma-bridge/presets.json`.
 
+## Building on an existing draft
+
+A draft that "isn't finished" still encodes decisions: what sits beside what, what is grouped, the order
+of elements, the spacing rhythm. Read it before designing, then keep it.
+
+1. `{"op":"inventory"}` — the frames, their sizes and typography stats.
+2. `{"op":"node","nodeId":"<frame>","depth":2}` — children **in order**, with positions: that is the
+   grouping and the reading order the author chose.
+3. Note the pattern (a left margin that repeats, a title that always sits above three columns) and keep
+   it. Change what the request needs, leave the rest where it is.
+4. Report the deviations you did make — "moved the footer up by 40", not just "improved the layout".
+
+Never normalise a draft silently. If consistency would require moving things the user placed, say so and
+ask; a tidy-looking slide that lost their groupings is a regression, not an improvement.
+
 ## Rules
 
 - **Read before write.** Two calls minimum: inspect, then mutate.
 - **One batch = one thought.** An op cannot reference a previous op's result, so if you need the
   new node's `id`, split into two calls.
+- **Respect the arrangement you inherit**: sibling order, proximity and grouping are intent. Do not
+  re-flow a draft to look tidier unless asked; ask first when consistency would move their elements.
 - **Never touch existing user layers** (`update`, `remove`, `reparent`) without explicit instruction.
   Prefix your own creations: `Bridge / …`.
 - **A rework goes right beside the original, as close as possible.** Asked to redo a

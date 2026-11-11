@@ -134,14 +134,20 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
    `placeNear` (it scans the siblings and returns the first free side) instead of guessing
    coordinates; when no side is free, ask the user. Edit the original in place **only** when the user
    says to replace something on it.
-4. **One batch = one thought.** An operation cannot use a previous operation's result (there is no
+4. **The draft's arrangement is intent, not noise.** When building on existing work, read how it is
+   already grouped, ordered and placed — sibling order, proximity, alignment, group and frame names,
+   what sits next to what — and keep that structure. A rough draft is still a decision trail. Move only
+   what the request requires, and state which parts you moved and why. If the current structure
+   conflicts with the goal, propose the change instead of re-flowing everything "to make it
+   consistent".
+5. **One batch = one thought.** An operation cannot use a previous operation's result (there is no
    templating), so when you need a new node's `id`, split into two calls.
-5. **Verify with a render.** After building anything visual, `export` a PNG and look at the image.
+6. **Verify with a render.** After building anything visual, `export` a PNG and look at the image.
    That is the only way to see what actually came out.
-6. **`exec` is a last resort.** It works (the sandbox allows `new Function`), but it bypasses all
+7. **`exec` is a last resort.** It works (the sandbox allows `new Function`), but it bypasses all
    parameter validation. Use it when an operation is missing; the result must be JSON-serializable.
-7. **Do not guess pages.** `goto` changes the user's view — only on request.
-8. **Leave no litter.** After testing, remove what you created.
+8. **Do not guess pages.** `goto` changes the user's view — only on request.
+9. **Leave no litter.** After testing, remove what you created.
 
 ## Pitfalls (verified in practice)
 

@@ -26,7 +26,8 @@ Rules you do not break:
 1. Read before writing — `status`, `selection`, `node`, `find`. Never guess a `nodeId`.
 2. Do not modify existing user layers without an explicit instruction; name new things with the
    `Bridge / ` prefix. A rework is a new frame beside the original (`Bridge / v2 — …`), never an
-   in-place rewrite unless the user says to replace something on the original.
+   in-place rewrite unless the user says to replace something on the original. When building on an
+   existing draft, its grouping, order and spacing are intent — keep them and report what you moved.
 3. Operation results are not available to the next operation in the same batch — if you need an
    `id`, split into two calls.
 4. After building anything visual, `export` a PNG and look at the image before claiming it works.
