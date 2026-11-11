@@ -182,6 +182,18 @@ The model sees the colours, the mask constrains the edit, and you pay once — t
 `≈ $0.0281 · 3 masks combined`. It is less exact than one mask on its own (the model has to respect
 the legend), which is why a single mask is still sent as a plain mask without the colour map.
 
+**How the prompt is assembled** — one place, so it is predictable:
+
+| masks | what actually goes to fal |
+|---|---|
+| none | the prompt alone |
+| one | the prompt, then `Change only the masked area: <that mask's instruction>. Keep everything outside it untouched.` |
+| two or more | the prompt, then the colour-map legend naming every mask, its colour and its instruction |
+
+An empty mask instruction means the mask adds no sentence — the prompt still describes the change. The
+composed prompt is echoed into the panel log (`prompt · …`), so you can see the exact text before
+spending anything.
+
 **References are numbered.** The first thumbnail is `#image1`, the second `#image2`, and the numbers
 are drawn on the thumbnails. Write `#image2` in any instruction and the panel expands it to
 `reference image 2 (filename.png)` before sending — the model reads that, the API only sees order.

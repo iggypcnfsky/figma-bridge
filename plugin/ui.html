@@ -918,6 +918,76 @@
         })
       }
 
+      // Prompt i instrukcje masek skleja jedno miejsce — dzięki temu wiadomo, co dokładnie leci.
+      function composePrompt(prompt, masks, combined) {
+        const main = String(prompt || '').trim()
+        if (masks.length === 0) return main
+        if (!combined) {
+          const instruction = (masks[0].instruction || '').trim()
+          if (!instruction) return main
+          return main + '\n\nChange only the masked area: ' + expandRefs(instruction) +
+            ' Keep everything outside it untouched.'
+        }
+        return main + '\n\n' + legendFor(masks)
+      }
+
+      function legendFor(masks) {
+        const parts = masks.map((mask) => {
+          const instruction = expandRefs((mask.instruction || '').trim())
+          return '"' + mask.name + '" marked in ' + mask.color + (instruction ? ' — ' + instruction : '')
+        })
+        return 'The last attached image is a colour map of the areas to change: ' + parts.join('; ') +
+          '. Change only the marked areas, keep everything else untouched.'
+      }
+
+      // Unia masek (biel wygrywa) + kolorowanka referencji, którą model może przeczytać.
+      async function combineMasks(masks, ref) {
+        const width = Math.round(ref.width || 1024)
+        const height = Math.round(ref.height || 1024)
+        const baseImage = await loadImage('data:image/png;base64,' + ref.base64)
+
+        const union = document.createElement('canvas')
+        union.width = width
+        union.height = height
+        const uctx = union.getContext('2d')
+        uctx.fillStyle = '#000'
+        uctx.fillRect(0, 0, width, height)
+
+        const colorMap = document.createElement('canvas')
+        colorMap.width = width
+        colorMap.height = height
+        const cctx = colorMap.getContext('2d')
+        cctx.drawImage(baseImage, 0, 0, width, height)
+
+        for (const mask of masks) {
+          const image = await loadImage('data:image/png;base64,' + mask.base64)
+          uctx.drawImage(image, 0, 0, width, height)
+          const tint = document.createElement('canvas')
+          tint.width = width
+          tint.height = height
+          const tctx = tint.getContext('2d')
+          tctx.drawImage(image, 0, 0, width, height)
+          const pixels = tctx.getImageData(0, 0, width, height)
+          const rgb = hexToRgb(mask.color)
+          for (let i = 0; i < pixels.data.length; i += 4) {
+            const on = pixels.data[i] > 128
+            pixels.data[i] = rgb.r
+            pixels.data[i + 1] = rgb.g
+            pixels.data[i + 2] = rgb.b
+            pixels.data[i + 3] = on ? 255 : 0
+          }
+          tctx.putImageData(pixels, 0, 0)
+          cctx.globalAlpha = 0.75
+          cctx.drawImage(tint, 0, 0)
+          cctx.globalAlpha = 1
+        }
+
+        return {
+          mask: { filename: 'mask-union.png', base64: union.toDataURL('image/png').split(',')[1], width, height },
+          colorMap: { filename: 'color-map.png', base64: colorMap.toDataURL('image/png').split(',')[1] },
+        }
+      }
+
       function dimsFromPreset(preset) {
         if (preset === 'selection' && primaryRef()) {
           return { width: Math.round(primaryRef().width), height: Math.round(primaryRef().height) }
@@ -1204,7 +1274,6 @@
         try {
           const dims = dimsFromPreset(state.preset)
           let extraRefs = state.refs.slice(1)
-          let passPrompt = prompt
           let passMask = null
 
           if (masks.length > 1) {
@@ -1213,22 +1282,24 @@
             const combo = await combineMasks(masks, primaryRef())
             extraRefs = [...extraRefs, combo.colorMap]
             passMask = combo.mask
-            passPrompt = prompt + '\n\n' + legendFor(masks)
             log('combining ' + masks.length + ' masks into one call · colour map attached as the last reference')
           } else if (masks.length === 1) {
             passMask = masks[0]
-            passPrompt = (masks[0].instruction || '').trim() || prompt
             log('queued · ' + masks[0].name)
           } else {
             log('queued')
           }
+
+          const passPrompt = composePrompt(prompt, masks, masks.length > 1)
+          const expanded = expandRefs(passPrompt)
+          log('prompt · ' + expanded.replace(/\s+/g, ' ').slice(0, 140) + (expanded.length > 140 ? '…' : ''))
 
           const base = primaryRef()
           const refs = state.mode === 'edit' ? [base, ...extraRefs].filter(Boolean) : []
           const payload = {
             mode: state.mode,
             model: $('model').value,
-            prompt: expandRefs(passPrompt),
+            prompt: expanded,
             // zawsze konkretne piksele — preset jest tylko sposobem ich wybrania
             size: dims.width + 'x' + dims.height,
             reasoning: $('reasoning').value || undefined,
