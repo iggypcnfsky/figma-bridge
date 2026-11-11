@@ -156,6 +156,7 @@
         <input id="refFile" type="file" accept="image/*" multiple class="hidden" />
         <div class="row" id="maskRow">
           <button id="paintMask" title="Paint an area to change">Paint mask…</button>
+          <button id="maskAdd" title="New mask — autosaves the current one (N)">+</button>
           <button id="maskFromSel" title="Use a black/white frame as a mask">From selection</button>
           <span id="maskInfo">no masks</span>
         </div>
@@ -1391,6 +1392,7 @@
 
       $('paintMask').onclick = () => switchMask().catch((err) => log('mask: ' + err.message))
       $('maskNew').onclick = () => switchMask().catch((err) => log('mask: ' + err.message))
+      $('maskAdd').onclick = () => switchMask().catch((err) => log('mask: ' + err.message))
       $('maskPick').onchange = () => {
         const value = $('maskPick').value
         switchMask(value === '__new__' ? undefined : value).catch((err) => log('mask: ' + err.message))
@@ -1425,8 +1427,33 @@
       maskCanvas.onpointerup = stopPainting
       maskCanvas.onpointercancel = stopPainting
       maskCanvas.onpointerleave = stopPainting
+      // Skróty działają tylko poza polami tekstowymi — instrukcje masek to inputy.
+      function isTyping(target) {
+        if (!target) return false
+        const tag = String(target.tagName || '').toLowerCase()
+        return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable
+      }
+
+      async function cycleMask(direction) {
+        const ids = state.masks.map((mask) => mask.id)
+        if (ids.length === 0) return switchMask()
+        // brak aktywnej maski (świeża, niezapisana) traktujemy jako „przed pierwszą”
+        const index = ids.indexOf(state.maskEditingId)
+        const start = index === -1 ? (direction > 0 ? -1 : 0) : index
+        await switchMask(ids[(start + direction + ids.length) % ids.length])
+      }
+
       window.addEventListener('keydown', (event) => {
-        if (event.key.toLowerCase() === 'e' && state.maskBase) $('maskErase').click()
+        if ((event.metaKey || event.ctrlKey) && String(event.key).toLowerCase() === 's' && state.maskBase) {
+          event.preventDefault()
+          saveMask(false)
+          return
+        }
+        if (!state.maskBase || isTyping(event.target)) return
+        const key = String(event.key).toLowerCase()
+        if (key === 'e') $('maskErase').click()
+        if (key === 'n') switchMask().catch((err) => log('mask: ' + err.message))
+        if (event.key === '[' || event.key === ']') cycleMask(event.key === ']' ? 1 : -1).catch((err) => log('mask: ' + err.message))
       })
 
       // Plik z dysku: tyle referencji, ile chcesz. Bez tego jedyną referencją była selekcja.

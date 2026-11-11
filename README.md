@@ -161,7 +161,9 @@ keep**, and the mask must be the size of the image. The panel paints it for you 
 the first reference with a brush (erase with `E`, *Clear*, *Use mask*). A picker in the editor switches
 between masks, **+ new** starts another one in the next colour, and the other masks stay visible while
 you paint. Switching, closing the panel or leaving the Edit tab **autosaves** the mask you were
-painting (an empty one is never created) — dimmed, each in its own colour, so an adjacent region is easy to hit. The strokes are
+painting (an empty one is never created), and `+` next to *Paint mask…* starts another mask with the
+same autosave — so `+`, paint, `+`, paint is the whole loop. Shortcuts while painting: `N` new mask,
+`[` / `]` previous/next, `E` erase, `⌘S` save and close — dimmed, each in its own colour, so an adjacent region is easy to hit. The strokes are
 stored at the image's own resolution (1920×1080 reference ⇒ 1920×1080 mask, no upscaling at save) while the preview
 is only a window rendered at device pixels, so enlarging the panel makes it sharper instead of
 blockier. If you would rather build the mask in Figma, paint the area
