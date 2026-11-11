@@ -56,6 +56,15 @@ except Exception:
 }
 
 case "$CMD" in
+  rules)
+    if [ -f "$REPO/rules.json" ]; then
+      cat "$REPO/rules.json"
+    else
+      echo '{}'
+      echo "no rules.json in $REPO — copy rules.example.json and fill in this project's constraints" >&2
+    fi
+    ;;
+
   where)
     echo "$REPO"
     ;;
@@ -177,6 +186,6 @@ PY
     ;;
 
   *)
-    die "unknown command '$CMD' (status|clients|where|doctor|ping|selection|pages|variables|op|run|export|image)"
+    die "unknown command '$CMD' (status|clients|where|doctor|rules|ping|selection|pages|variables|op|run|export|image)"
     ;;
 esac

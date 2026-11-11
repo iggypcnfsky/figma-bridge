@@ -4,3 +4,4 @@ out/
 *.log
 out/jobs/
 presets.json
+rules.json

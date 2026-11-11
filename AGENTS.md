@@ -21,7 +21,12 @@ command works from any directory:
 
 ```bash
 figma doctor     # repo path, server state, connected Figma windows, img-forge + FAL key
+figma rules      # this project's constraints: type floor, grid, frame size, version naming
 ```
+
+`figma rules` is the difference between "make it look consistent" and actually matching the house
+style. Read it before any design work; if it returns `{}`, ask the user for the floor values instead of
+inventing them. Anything marked `"confirmed": false` is an assumption you must verify.
 
 If `figma` is missing, the absolute path is printed by the skill or recoverable with
 `figma where`; as a last resort the repo lives next to this workspace checkout. Only then fall back to

@@ -18,7 +18,12 @@ executed inside Figma by a plugin, through the Figma Plugin API. No OAuth, no to
 ```bash
 figma doctor        # repo, server, connected windows, img-forge + FAL key in one shot
 figma clients       # id, file, page of every connected Figma window
+figma rules         # project constraints: type floor, grid, frame size, version naming
 ```
+
+**Read `figma rules` before designing.** It carries the non-obvious limits — e.g. "Poppins 20/25 is the
+floor" — that no amount of reading the canvas will tell you. Treat `"confirmed": false` as an
+assumption to verify with the user, and `{}` as "ask, do not invent".
 
 If the command is missing, use `node "$(figma where)/server.mjs"` only after asking; do not `find` the
 repo, and do not guess paths.

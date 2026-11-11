@@ -78,6 +78,7 @@ After editing plugin files, re-run the plugin; manifest changes require a re-imp
 
 ```bash
 figma doctor                               # repo, server, windows, img-forge in one call
+figma rules                                # project constraints: type floor, grid, version naming
 figma clients                              # which Figma windows are connected
 ./bin/figma --file ITHAKA selection 2      # target one file when several are open
 ./bin/figma selection 2

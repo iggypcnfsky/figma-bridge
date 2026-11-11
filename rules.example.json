@@ -1,0 +1,12 @@
+{
+  "file": "ITHAKA",
+  "typography": {
+    "family": "Poppins",
+    "minFontSize": 20,
+    "minLineHeight": 25,
+    "note": "Poppins Regular 20 / 25 is the floor — never go smaller in this deck"
+  },
+  "grid": { "columns": 12, "gutter": 24, "margin": 64 },
+  "frames": { "width": 1920, "height": 1080 },
+  "versions": { "nameTemplate": "Bridge / v2 — {name}", "gap": 80 }
+}
