@@ -110,14 +110,19 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
 2. **Do not touch someone else's layers without consent.** `update`, `remove`, `reparent` on existing
    user content only on an explicit instruction. Create new things alongside, prefixed
    (`Bridge / …`), so they can be found and deleted.
-3. **One batch = one thought.** An operation cannot use a previous operation's result (there is no
+3. **A rework is a new artefact, not an edit of theirs.** When asked to redo a slide, screen or
+   section, duplicate the original, put the result **next to it** (above, below or beside — never
+   overlapping it) and name it clearly (`Bridge / v2 — <original name>`). Edit the original in place
+   **only** when the user says to replace something on it. This is the default; ask if placement is
+   genuinely ambiguous.
+4. **One batch = one thought.** An operation cannot use a previous operation's result (there is no
    templating), so when you need a new node's `id`, split into two calls.
-4. **Verify with a render.** After building anything visual, `export` a PNG and look at the image.
+5. **Verify with a render.** After building anything visual, `export` a PNG and look at the image.
    That is the only way to see what actually came out.
-5. **`exec` is a last resort.** It works (the sandbox allows `new Function`), but it bypasses all
+6. **`exec` is a last resort.** It works (the sandbox allows `new Function`), but it bypasses all
    parameter validation. Use it when an operation is missing; the result must be JSON-serializable.
-6. **Do not guess pages.** `goto` changes the user's view — only on request.
-7. **Leave no litter.** After testing, remove what you created.
+7. **Do not guess pages.** `goto` changes the user's view — only on request.
+8. **Leave no litter.** After testing, remove what you created.
 
 ## Pitfalls (verified in practice)
 

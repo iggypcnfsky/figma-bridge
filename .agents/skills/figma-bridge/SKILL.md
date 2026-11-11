@@ -93,6 +93,9 @@ Presets saved in that panel live in `figma-bridge/presets.json`.
   new node's `id`, split into two calls.
 - **Never touch existing user layers** (`update`, `remove`, `reparent`) without explicit instruction.
   Prefix your own creations: `Bridge / …`.
+- **A rework goes beside the original.** Asked to redo a slide/screen/section: duplicate it, place the
+  new version above, below or next to it (never overlapping), name it `Bridge / v2 — <name>`, and leave
+  the original untouched. Replace elements in place only when the user explicitly asks for that.
 - **`goto` changes the user's view** — only on request.
 - **`exec` is a last resort.** It works (Figma's sandbox allows `new Function`) and bypasses all
   parameter validation. Return JSON-serializable values only.
