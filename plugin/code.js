@@ -672,7 +672,7 @@ const OPS = {
         pattern: 'GRID',
         visible: visible !== false,
         color: withAlpha,
-        sectionSize: Number(spec.size === undefined ? 8 : spec.size),
+        sectionSize: Number(spec.size === undefined ? 40 : spec.size),
       })
     }
     node.layoutGrids = next

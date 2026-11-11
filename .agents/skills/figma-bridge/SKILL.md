@@ -63,7 +63,7 @@ Full parameters: `docs/ops-reference.md`.
 Design-work shortcuts worth knowing:
 
 - **grid means GRID**: when the user says "set a grid", they want the square layout grid, not columns:
-  `{"op":"setGrids","nodeId":"…","grid":true}` (8 px, 40% by default) or `"grid":{"size":40}`.
+  `{"op":"setGrids","nodeId":"…","grid":true}` (40 px cells, 40% by default) or `"grid":40`.
   Use `columns`/`rows` only when they say columns, a 12-col grid, or give gutter/margin values.
   Never fake a grid with rectangles; `applyStyle` with `kind:"grid"` applies a saved grid style.
 - **rows of items**: build them, then `{"op":"align","nodeIds":[…],"mode":"TOP"}` and

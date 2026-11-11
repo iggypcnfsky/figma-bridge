@@ -246,12 +246,12 @@ Returns `{ id, layoutGrids }` exactly as Figma stores them.
 | `nodeId` | — (required) | node |
 | `columns` | — | `{ count: 12, gutter: 24, margin: 0, alignment: 'STRETCH', color, sectionSize }` |
 | `rows` | — | same shape, default `count: 3` |
-| `grid` | — | **square GRID**: a number is the cell size (`8`), or `{ size, opacity, color }`. Defaults: `8 px`, `40%` |
+| `grid` | — | **square GRID**: a number is the cell size (`40`), or `{ size, opacity, color }`. Defaults: `40 px`, `40%` |
 | `visible` | `true` | show the grid immediately |
 | `clear` | `false` | `true` removes every grid on the node |
 
 ```bash
-./bin/figma op '{"op":"setGrids","nodeId":"12:34","grid":true}'                 # 8 px, 40% — the default
+./bin/figma op '{"op":"setGrids","nodeId":"12:34","grid":true}'                 # 40 px cells, 40% — the default
 ./bin/figma op '{"op":"setGrids","nodeId":"12:34","grid":{"size":40,"opacity":0.4}}'
 ./bin/figma op '{"op":"setGrids","nodeId":"12:34","columns":{"count":12,"gutter":24,"margin":64}}'
 
