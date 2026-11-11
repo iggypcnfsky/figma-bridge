@@ -246,13 +246,17 @@ Returns `{ id, layoutGrids }` exactly as Figma stores them.
 | `nodeId` | — (required) | node |
 | `columns` | — | `{ count: 12, gutter: 24, margin: 0, alignment: 'STRETCH', color, sectionSize }` |
 | `rows` | — | same shape, default `count: 3` |
-| `grid` | — | `{ size: 8, color }` square grid |
+| `grid` | — | **square GRID**: a number is the cell size (`8`), or `{ size, opacity, color }`. Defaults: `8 px`, `40%` |
 | `visible` | `true` | show the grid immediately |
 | `clear` | `false` | `true` removes every grid on the node |
 
 ```bash
+./bin/figma op '{"op":"setGrids","nodeId":"12:34","grid":true}'                 # 8 px, 40% — the default
+./bin/figma op '{"op":"setGrids","nodeId":"12:34","grid":{"size":40,"opacity":0.4}}'
 ./bin/figma op '{"op":"setGrids","nodeId":"12:34","columns":{"count":12,"gutter":24,"margin":64}}'
-./bin/figma op '{"op":"setGrids","nodeId":"12:34","grid":{"size":8}}'
+
+`grid` and `columns`/`rows` are different patterns: when a brief says "put a grid on it", it means the
+square GRID. Columns and rows are a deliberate choice, so pass them explicitly.
 ```
 
 Returns the applied `layoutGrids`. Sizes are snapped to Figma's own grid limits; an unsupported node

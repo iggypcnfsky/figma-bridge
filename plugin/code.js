@@ -629,7 +629,7 @@ const OPS = {
     return { id: node.id, layoutGrids: node.layoutGrids }
   },
 
-  async setGrids({ nodeId, columns, rows, grid, visible = true, clear = false } = {}) {
+  async setGrids({ nodeId, columns, rows, grid, gridOpacity, visible = true, clear = false } = {}) {
     const node = await getNode(nodeId)
     if (!('layoutGrids' in node)) fail(node.type + ' has no layout grids')
     if (clear || (!columns && !rows && !grid)) {
@@ -662,11 +662,17 @@ const OPS = {
       })
     }
     if (grid) {
+      // „grid" = siatka kwadratowa (GRID). Liczba => rozmiar oczka, obiekt => {size, opacity, color}.
+      const spec = typeof grid === 'number' ? { size: grid } : grid === true ? {} : grid
+      const opacity = Number(spec.opacity === undefined ? (gridOpacity === undefined ? 0.4 : gridOpacity) : spec.opacity)
+      const shade = spec.color || '#000000'
+      const withAlpha = rgba(shade)
+      withAlpha.a = Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 0.4
       next.push({
         pattern: 'GRID',
         visible: visible !== false,
-        color: rgba(grid.color || '#FF000014'),
-        sectionSize: Number(grid.size === undefined ? 8 : grid.size),
+        color: withAlpha,
+        sectionSize: Number(spec.size === undefined ? 8 : spec.size),
       })
     }
     node.layoutGrids = next
