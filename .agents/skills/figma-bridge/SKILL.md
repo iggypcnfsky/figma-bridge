@@ -215,6 +215,12 @@ ask; a tidy-looking slide that lost their groupings is a regression, not an impr
 - A slide deck overview is one call too: `{"op":"inventory"}` returns every frame with geometry,
   `minFontSize`, fonts, grid count and fills — enough to pick "frames 11–19" or find text below a
   minimum size.
+- `figma.mixed` is a symbol: on TEXT, `fills`/`strokes`/`fontSize` can be mixed values, so
+  `node.fills.map(...)` throws `not a function`. Guard with `Array.isArray()` or `$.paints(node)`;
+  use `node.getRangeFills(0, 1)` when you need per-range detail.
+- `figma run` / `figma op` exit 1 and print the failure on stderr. A failed op has no `value` in its
+  result — check `ok` before `results[0].value`, and never assume a key exists: `undefined` is dropped
+  from JSON, so Python needs `.get()` and scripts should emit explicit `null`s.
 - Never index a field the reference does not list. `summary` carries `font`, `fontSize`, `lineHeight`
   and `letterSpacing` for TEXT; everything else comes from `exec` with the real API name. Mixed styles
   are the string `"MIXED"`, so guard with `.get()` and fallbacks.

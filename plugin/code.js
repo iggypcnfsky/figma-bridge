@@ -65,6 +65,8 @@ function hexOf(color) {
 function paintLabel(p) {
   if (!p) return null
   if (p.type === 'SOLID') return hexOf(p.color) + (p.opacity !== undefined && p.opacity < 1 ? ' @' + round(p.opacity) : '')
+  // Obraz bez hasha jest nierozpoznawalny: dwa prostokąty z innym zdjęciem wyglądają identycznie.
+  if (p.type === 'IMAGE') return 'IMAGE ' + (p.scaleMode || 'FILL') + (p.imageHash ? ' #' + String(p.imageHash).slice(0, 10) : '')
   return p.type
 }
 
@@ -1475,6 +1477,10 @@ const OPS = {
 // synchroniczny setter (`node.textStyleId = …`) rzuca pod `documentAccess: "dynamic-page"`.
 const EXEC_HELPERS = Object.freeze({
   node: (id) => getNode(id),
+  // na TEXT `fills`/`strokes` bywają `figma.mixed` (symbol), nie tablicą — `.map` wtedy
+  // rzuca „not a function”. Ten helper zawsze zwraca tablicę; `$.mixed(v)` mówi, czy była mieszana.
+  paints: (node, key = 'fills') => (node && Array.isArray(node[key]) ? node[key] : []),
+  mixed: (value) => value === figma.mixed,
   text: (node, spec) => applyText(node, spec),
   font: (node, family, style) => applyText(node, { fontFamily: family, fontStyle: style }),
   textStyle: (name) => styleByName('text', name),

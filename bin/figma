@@ -70,6 +70,25 @@ except Exception:
     print(raw)'
 }
 
+# Jak pretty, ale batch zakończony błędem kończy proces kodem 1 i pisze błąd na stderr.
+# Bez tego agent czyta JSON, sięga po results[0].value i dostaje KeyError zamiast prawdziwej przyczyny.
+pretty_res() {
+  python3 -c 'import json,sys
+raw = sys.stdin.read()
+try:
+    data = json.loads(raw)
+except Exception:
+    sys.stdout.write(raw)
+    sys.exit(0)
+print(json.dumps(data, indent=2, ensure_ascii=False))
+if isinstance(data, dict) and (data.get("ok") is False or (data.get("error") and data.get("ok") is not True)):
+    results = data.get("results") or []
+    failed = next((r for r in results if isinstance(r, dict) and r.get("ok") is False), None)
+    message = data.get("error") or (failed or {}).get("error") or "operation failed"
+    sys.stderr.write("figma: " + str(message) + "\n")
+    sys.exit(1)'
+}
+
 case "$CMD" in
   agents)
     curl -sS "$BASE/status" 2>/dev/null | python3 -c '
@@ -173,25 +192,25 @@ if len(clients) > 1:
     ;;
 
   ping)
-    post_run '[{"op":"ping"}]' | pretty
+    post_run '[{"op":"ping"}]' | pretty_res
     ;;
 
   selection)
     DEPTH="${1:-2}"
-    post_run "[{\"op\":\"selection\",\"depth\":$DEPTH}]" | pretty
+    post_run "[{\"op\":\"selection\",\"depth\":$DEPTH}]" | pretty_res
     ;;
 
   pages)
-    post_run '[{"op":"pages"}]' | pretty
+    post_run '[{"op":"pages"}]' | pretty_res
     ;;
 
   variables)
-    post_run '[{"op":"variables"}]' | pretty
+    post_run '[{"op":"variables"}]' | pretty_res
     ;;
 
   op)
     [ $# -ge 1 ] || die "podaj JSON operacji, np. figma op '{\"op\":\"status\"}'"
-    post_run "[$1]" | pretty
+    post_run "[$1]" | pretty_res
     ;;
 
   run)
@@ -206,7 +225,7 @@ if len(clients) > 1:
         --dry-run) EXTRA=',"dryRun":true' ;;
       esac
     done
-    post_run "$PAYLOAD" "$EXTRA" | pretty
+    post_run "$PAYLOAD" "$EXTRA" | pretty_res
     ;;
 
   image)

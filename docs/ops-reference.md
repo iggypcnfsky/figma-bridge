@@ -78,7 +78,8 @@ Use it to answer "which frames have no grid", "where is text smaller than 20 px"
 
 Returns `{ count, nodes: [summary…] }`.
 
-`summary` for every node: `id, name, type, x, y, width, height, visible, fills` (hex or paint type),
+`summary` for every node: `id, name, type, x, y, width, height, visible, fills` (hex or paint type;
+an image fill reads `IMAGE FILL #<hash prefix>`, so two image fills can be compared),
 `layoutMode`/`itemSpacing` when the node is auto-layout, and `children[]` up to `maxChildren`.
 
 For `TEXT` nodes it adds: `characters` (first 160), `font {family, style}`, `fontFamily`, `fontSize`,
@@ -542,6 +543,8 @@ manifest runs with `documentAccess: "dynamic-page"`. `node.textStyleId = style.i
 | `$.font(node, family, style)` | sets the font, loading it first |
 | `$.textStyle(name)`, `$.paintStyle(name)`, `$.effectStyle(name)`, `$.gridStyle(name)` | the style object |
 | `$.setTextStyle(node, styleOrName)`, `$.setFillStyle`, `$.setStrokeStyle`, `$.setEffectStyle`, `$.setGridStyle` | applies it, returns `{id, name, kind}` |
+| `$.paints(node, key = "fills")` | always an array — on TEXT with mixed fills `node.fills` is the `figma.mixed` symbol, and `.map` on it throws `not a function` |
+| `$.mixed(value)` | `true` when the value is `figma.mixed` |
 
 ```json
 { "op": "exec", "code": "const n = await $.node('1:2'); await $.setTextStyle(n, 'body/25'); return n.textStyleId" }
@@ -549,3 +552,16 @@ manifest runs with `documentAccess: "dynamic-page"`. `node.textStyleId = style.i
 
 If a style error does come back, the message now names the bridge path to use instead — it is not a
 dead end, it is a hint.
+
+Two scripting traps that bite every agent once:
+
+- **`figma.mixed` is a symbol.** On a TEXT node, `fills`, `strokes`, `fontSize` or `fontName` can be
+  `figma.mixed` instead of a value — `node.fills.map(...)` then throws `not a function`. Guard with
+  `Array.isArray(node.fills)` or use `$.paints(node)`. Text ranges stay available via
+  `node.getRangeFills(0, 1)`.
+- **`undefined` keys vanish.** The result is JSON, so a property set to `undefined` is dropped — a
+  Python `row['chars']` then raises `KeyError`. Write explicit `null`s (`chars: isText ? … : null`)
+  and read with `.get()`.
+
+A failed op also removes `value` from that result: check `ok` before `results[0].value`, or let the CLI
+do it — `figma op` and `figma run` exit **1** and print the reason on stderr when the batch fails.

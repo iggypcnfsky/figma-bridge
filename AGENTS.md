@@ -48,7 +48,7 @@ starting the server yourself.
 ./bin/figma pages                        # page list
 ./bin/figma variables                    # local collections and variables
 ./bin/figma op '{"op":"status"}'         # a single operation
-./bin/figma run '[{"op":"…"},{"op":"…"}]'  # a batch of operations
+./bin/figma run '[{"op":"…"},{"op":"…"}]'  # a batch; exits 1 with the reason when an op fails
 ./bin/figma export <nodeId> <file> [PNG|JPG|SVG|PDF] [scale]
 ./bin/figma image <nodeId> <file> [FILL|FIT|TILE|CROP]   # image file → fill, no cloud upload
 ./bin/figma svg gen "prompt" [--ref f.png] [--out x.svg] [--insert]   # QuiverAI → real vectors
@@ -258,6 +258,15 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
   `textStyle` and per-property `changed`/after-state reporting.
 - **Text needs a font.** `createText` calls `loadFontAsync` itself; if the family is neither in the
   file nor installed locally, the operation fails on the font — use `Inter` as a safe default.
+- **`figma.mixed` is a symbol, not an array.** On a TEXT node `fills`, `strokes`, `fontSize` and
+  `fontName` can be `figma.mixed` when ranges differ; `node.fills.map(...)` then dies with
+  `not a function`. Guard with `Array.isArray(...)`, use `$.paints(node)` in `exec`, or read
+  `node.getRangeFills(...)` for the ranges.
+- **A failed op has no `value`.** `results[i]` is `{ ok: false, error }` — indexing `.value` gives
+  `KeyError`/`undefined` and hides the real message. Check `ok` first. `figma op` and `figma run` now
+  exit **1** and print the error on stderr, which stops a shell pipeline before that happens.
+- **`undefined` disappears from JSON.** `exec` results are serialized, so `{ chars: undefined }` has
+  no `chars` key at all. Emit explicit `null`s and read with `.get()` in Python.
 - **Read the documented fields, do not assume them.** A script that indexes `result['lh']` or any
   field the reference does not list fails with `KeyError` — that is the script's bug, not the bridge's.
   `node`/`selection` expose `font`, `fontSize`, `lineHeight`, `letterSpacing` for TEXT nodes; anything
