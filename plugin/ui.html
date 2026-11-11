@@ -697,10 +697,6 @@
       async function openMaskEditor(editId) {
         const ref = primaryRef()
         if (!ref) return log('add a reference first — the mask is painted over it')
-        if (state.maskDirty) {
-          state.maskDirty = false
-          log('switched masks — unsaved strokes in the previous one were dropped')
-        }
         const image = await loadImage('data:image/png;base64,' + ref.base64)
         const naturalWidth = Math.round(ref.width || image.naturalWidth)
         const naturalHeight = Math.round(ref.height || image.naturalHeight)
@@ -804,9 +800,10 @@
         $('maskEditor').classList.add('hidden')
       }
 
-      function saveMask() {
+      // Buduje gotową maskę z aktualnych kresek; null gdy nic nie pomalowano.
+      function buildMask() {
         const base = state.maskBase
-        if (!base) return
+        if (!base) return null
         const width = base.maskCanvas.width
         const height = base.maskCanvas.height
         const pixels = base.maskCanvas.getContext('2d').getImageData(0, 0, width, height).data
@@ -822,14 +819,47 @@
           image.data[i] = image.data[i + 1] = image.data[i + 2] = on ? 255 : 0
           image.data[i + 3] = 255
         }
-        if (painted === 0) return log('mask is empty — paint the area to change')
+        if (painted === 0) return null
         octx.putImageData(image, 0, 0)
+        return {
+          base64: out.toDataURL('image/png').split(',')[1],
+          width,
+          height,
+          painted: painted / (width * height),
+        }
+      }
+
+      /**
+       * Zapisuje bieżące kreski. `silent` = autosave: bez zamykania edytora i bez marudzenia,
+       * ale też bez tworzenia pustej maski — pusta po prostu nie powstaje.
+       */
+      function saveMask(silent) {
+        const built = buildMask()
+        if (!built) {
+          if (!silent) log('mask is empty — paint the area to change')
+          return null
+        }
         const editId = state.maskEditingId
-        const mask = addMask(out.toDataURL('image/png').split(',')[1], width, height, editId)
+        const mask = addMask(built.base64, built.width, built.height, editId)
         state.maskDirty = false
-        closeMaskEditor()
-        log((editId ? 'updated ' + mask.name : 'added ' + mask.name) + ' at ' + width + '×' + height + ' · ' +
-          Math.round((painted / (width * height)) * 100) + '% of the area will change')
+        // po autosave jesteśmy „w” tej masce — kolejne kreski dopisują do niej, nie tworzą nowej
+        state.maskEditingId = mask.id
+        if (!silent) {
+          closeMaskEditor()
+          log((editId ? 'updated ' + mask.name : 'added ' + mask.name) + ' at ' + built.width + '×' + built.height +
+            ' · ' + Math.round(built.painted * 100) + '% of the area will change')
+        }
+        return mask
+      }
+
+      // Przełączenie maski najpierw zapisuje to, co już namalowane (autosave), więc
+      // „+ new” jest jednym kliknięciem, a nie „zamknij, zapisz, otwórz, nazwij”.
+      async function switchMask(nextId) {
+        if (state.maskBase && state.maskDirty) {
+          const saved = saveMask(true)
+          if (saved) log('autosaved ' + saved.name + ' before switching')
+        }
+        await openMaskEditor(nextId)
       }
 
       // alternatywa: frame pomalowany na biało/czarno jako maska
@@ -1104,6 +1134,11 @@
 
       // ----------------------------------------------------------------- tryb
       function setMode(mode) {
+        // zmiana zakładki też jest wyjściem z edytora — nie gub kresek
+        if (state.mode === 'edit' && mode !== 'edit' && state.maskBase && state.maskDirty) {
+          const saved = saveMask(true)
+          if (saved) log('autosaved ' + saved.name + ' before leaving Edit')
+        }
         state.mode = mode
         for (const button of document.querySelectorAll('.tabs button')) {
           button.classList.toggle('on', button.dataset.tab === mode)
@@ -1224,6 +1259,10 @@
 
       // --------------------------------------------------------------- zdarzenia
       $('toggle').onclick = () => {
+        if (state.maskBase && state.maskDirty) {
+          const saved = saveMask(true)
+          if (saved) log('autosaved ' + saved.name + ' before closing the panel')
+        }
         state.expanded = !state.expanded
         $('panel').classList.toggle('hidden', !state.expanded)
         $('toggle').style.transform = state.expanded ? 'rotate(180deg)' : 'none'
@@ -1350,11 +1389,11 @@
         }
       }
 
-      $('paintMask').onclick = () => openMaskEditor().catch((err) => log('mask: ' + err.message))
-      $('maskNew').onclick = () => openMaskEditor().catch((err) => log('mask: ' + err.message))
+      $('paintMask').onclick = () => switchMask().catch((err) => log('mask: ' + err.message))
+      $('maskNew').onclick = () => switchMask().catch((err) => log('mask: ' + err.message))
       $('maskPick').onchange = () => {
         const value = $('maskPick').value
-        openMaskEditor(value === '__new__' ? undefined : value).catch((err) => log('mask: ' + err.message))
+        switchMask(value === '__new__' ? undefined : value).catch((err) => log('mask: ' + err.message))
       }
       $('maskFromSel').onclick = () => {
         state.maskFromSelection = true
@@ -1371,7 +1410,7 @@
         ctx.clearRect(0, 0, state.maskBase.maskCanvas.width, state.maskBase.maskCanvas.height)
         redrawMask()
       }
-      $('maskSave').onclick = () => saveMask()
+      $('maskSave').onclick = () => saveMask(false)
       $('maskCancel').onclick = () => closeMaskEditor()
       const maskCanvas = $('maskCanvas')
       const stopPainting = () => { state.maskPainting = false }
