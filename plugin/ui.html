@@ -1321,6 +1321,40 @@
       // ------------------------------------------------------------- kolejka zadań
       // Każde uruchomienie to osobne zlecenie: nie czekamy na wynik, tylko dopisujemy je do listy
       // i wracamy do promptu. Kilka generacji może lecieć naraz (serwer ma własny limit).
+      // Snapshot = dokładnie to, co poszło do modelu: referencje, maski, rozmiar, model.
+      // Bez tego „wróć do zadania i popraw prompt” używałby dzisiejszych referencji, nie tamtych.
+      function snapshotState() {
+        const copy = (value) => (typeof structuredClone === 'function' ? structuredClone(value) : JSON.parse(JSON.stringify(value)))
+        return {
+          refs: copy(state.refs),
+          masks: copy(state.masks),
+          preset: state.preset,
+          custom: copy(state.custom),
+          model: $('model').value,
+          quality: $('quality').value,
+          reasoning: $('reasoning').value,
+        }
+      }
+
+      function restoreSnapshot(snapshot) {
+        if (!snapshot) return false
+        state.refs = snapshot.refs.map((ref) => ({ ...ref }))
+        state.masks = snapshot.masks.map((mask) => ({ ...mask }))
+        state.preset = snapshot.preset || '1:1@1024'
+        if (snapshot.custom) state.custom = { ...snapshot.custom }
+        if (snapshot.model) $('model').value = snapshot.model
+        if (snapshot.quality) $('quality').value = snapshot.quality
+        if (snapshot.reasoning) $('reasoning').value = snapshot.reasoning
+        state.maskEditingId = null
+        state.maskBase = null
+        $('maskEditor').classList.add('hidden')
+        renderRefs()
+        renderMasks()
+        renderChips()
+        updateCost()
+        return true
+      }
+
       function renderJobs() {
         const list = $('jobList')
         if (!list) return
@@ -1340,6 +1374,7 @@
             ? '$' + (entry.cost ? Number(entry.cost).toFixed(4) : '?')
             : entry.status
           row.append(dot, text, meta)
+          row.title = 'click to reopen: result, prompt, references and masks from this run'
           row.onclick = () => openJob(entry)
           list.append(row)
         }
@@ -1357,6 +1392,10 @@
         state.focusedJob = entry.localId
         $('prompt').value = entry.rawPrompt
         if (entry.mode !== state.mode) setMode(entry.mode)
+        if (restoreSnapshot(entry.snapshot)) {
+          log('restored ' + entry.snapshot.refs.length + ' reference(s) and ' +
+            entry.snapshot.masks.length + ' mask(s) from this run')
+        }
         const result = entry.result || {}
         if (result.base64) {
           $('preview').src = 'data:image/png;base64,' + result.base64
@@ -1476,10 +1515,13 @@
           }
           if (passMask) payload.mask = { filename: 'mask.png', base64: passMask.base64 }
 
+          // snapshot PRZED wysłaniem: w trakcie requestu nie chcemy już nic zmieniać
+          const snapshot = snapshotState()
           const job = await api('/image/jobs', { method: 'POST', body: JSON.stringify(payload) })
           const entry = {
             localId: 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4),
             id: job.id,
+            snapshot,
             mode: state.mode,
             rawPrompt: prompt,
             status: 'running',
@@ -1492,6 +1534,12 @@
           }
           state.jobs.unshift(entry)
           state.focusedJob = entry.localId
+          // historia trzyma obrazy w pamięci, więc ograniczamy ją do 15 zakończonych zadań
+          while (state.jobs.length > 15) {
+            const lastDone = [...state.jobs].reverse().find((item) => item.status !== 'running')
+            if (!lastDone) break
+            state.jobs = state.jobs.filter((item) => item.localId !== lastDone.localId)
+          }
           renderJobs()
           log('job ' + job.id.slice(0, 8) + ' started — you can start another one')
           pollJobs()

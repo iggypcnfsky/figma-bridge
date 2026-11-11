@@ -100,6 +100,8 @@ Image generation (optional; needs a `FAL_KEY` and the sibling CLI,
 - a job spawns `img-forge` and returns `{status, log, result:{file, base64, width, height}}`
 - image jobs run in parallel: `IMAGE_CONCURRENCY` (default 3, max 8) `img-forge` processes; `/status`
   reports `image: {running, queued, concurrency}`
+- the panel snapshots each run's references, masks, size and model before submitting, so reopening a
+  job reproduces its inputs (last 15 runs kept; the payload itself lives on the server for 30 min)
 - if you can run the CLI directly, do that instead — the endpoint exists for the Figma panel,
   which humans use from the plugin window (Generate / Edit tabs, insert-as-rectangle or fill)
 
