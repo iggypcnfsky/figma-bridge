@@ -74,8 +74,11 @@ After editing plugin files, re-run the plugin; manifest changes require a re-imp
 
 ## Usage
 
+`figma` is on `PATH` (a symlink to `bin/figma`), so these work from any directory:
+
 ```bash
-./bin/figma clients                        # which Figma windows are connected
+figma doctor                               # repo, server, windows, img-forge in one call
+figma clients                              # which Figma windows are connected
 ./bin/figma --file ITHAKA selection 2      # target one file when several are open
 ./bin/figma selection 2
 ./bin/figma op '{"op":"createFrame","name":"Card","width":320,"height":200,"fill":"#0B0B0F","props":{"cornerRadius":16,"layoutMode":"VERTICAL","paddingTop":24,"itemSpacing":12}}'

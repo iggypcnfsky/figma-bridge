@@ -29,6 +29,26 @@ manifest lacks the `currentuser` permission.
 
 No parameters. Returns an array of `{ id, name, type }` for every page.
 
+## inventory
+
+One call instead of walking the tree: every frame on the current page (or inside `nodeId`) with its
+geometry and typography statistics.
+
+| parameter | default | meaning |
+|---|---|---|
+| `nodeId` | current page | container to scan |
+| `limit` | `200` | max children examined |
+
+Returns `{ page, count, frames: [{ id, name, type, x, y, width, height, children, textNodes, fonts,
+minFontSize, maxFontSize, layoutGrids, fills }] }`.
+
+```bash
+./bin/figma op '{"op":"inventory"}'
+```
+
+Use it to answer "which frames have no grid", "where is text smaller than 20 px", or "what are frames
+11–19" without a single `node` call.
+
 ## selection
 
 | parameter | default | meaning |

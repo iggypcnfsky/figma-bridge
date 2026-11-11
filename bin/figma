@@ -9,6 +9,10 @@
 #   figma export <nodeId> <plik> [format] [scale]
 set -euo pipefail
 
+# Ścieżka repo liczona z realnego pliku (działa też przez symlink w ~/.local/bin).
+SELF=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$0")
+REPO=$(dirname "$(dirname "$SELF")")
+
 BASE="${FIGMA_BRIDGE_URL:-http://127.0.0.1:3847}"
 
 # Kilka okien Figmy może mieć plugin otwarty; --file/--client wybiera cel.
@@ -52,6 +56,38 @@ except Exception:
 }
 
 case "$CMD" in
+  where)
+    echo "$REPO"
+    ;;
+
+  doctor)
+    echo "repo:      $REPO"
+    echo "server:    $BASE"
+    printf 'bridge:    '
+    if curl -sf -m 2 "$BASE/status" > /tmp/figma-doctor.json; then
+      python3 -c '
+import json
+data = json.load(open("/tmp/figma-doctor.json"))
+clients = data.get("clients") or []
+print("up, plugin connected" if clients else "up, but no Figma window connected")
+for entry in clients:
+    print("             %s  %s / %s" % (entry.get("client"), entry.get("file") or "?", entry.get("page") or "?"))
+'
+    else
+      echo "down — start it with: dsh (the Figma Bridge plugin does it) or: node \"$REPO/server.mjs\""
+    fi
+    printf 'img-forge: '
+    if [ -x "$REPO/../img-forge/img" ]; then
+      if grep -q '^FAL_KEY=' "$REPO/../img-forge/.env" 2>/dev/null || [ -n "${FAL_KEY:-}" ] || [ -f "$HOME/.config/img-forge/key" ]; then
+        echo "present, FAL key set"
+      else
+        echo "present, FAL key MISSING"
+      fi
+    else
+      echo "missing (image generation unavailable)"
+    fi
+    ;;
+
   status|health)
     curl -sS "$BASE/status" | pretty
     ;;
@@ -141,6 +177,6 @@ PY
     ;;
 
   *)
-    die "unknown command '$CMD' (status|clients|ping|selection|pages|variables|op|run|export|image)"
+    die "unknown command '$CMD' (status|clients|where|doctor|ping|selection|pages|variables|op|run|export|image)"
     ;;
 esac

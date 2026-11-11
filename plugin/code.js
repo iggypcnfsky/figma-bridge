@@ -324,6 +324,43 @@ const OPS = {
     return { count: hits.length, hits }
   },
 
+  /** Przegląd klatek na stronie: geometria + statystyka typografii. Jedno wywołanie zamiast chodzenia po drzewie. */
+  async inventory({ nodeId, limit = 200 } = {}) {
+    const root = nodeId ? await getNode(nodeId) : figma.currentPage
+    const children = (root.children || []).slice(0, Number(limit))
+    const frames = []
+    for (const frame of children) {
+      if (!['FRAME', 'COMPONENT', 'COMPONENT_SET', 'SECTION'].includes(frame.type)) continue
+      const texts = []
+      walk(frame, (node) => {
+        if (node.type === 'TEXT') texts.push(node)
+        return true
+      }, 20000)
+      const sizes = texts.map((text) => text.fontSize).filter((size) => typeof size === 'number')
+      const families = new Set()
+      for (const text of texts) {
+        if (text.fontName && text.fontName !== figma.mixed) families.add(text.fontName.family)
+      }
+      frames.push({
+        id: frame.id,
+        name: frame.name,
+        type: frame.type,
+        x: round(frame.x),
+        y: round(frame.y),
+        width: round(frame.width),
+        height: round(frame.height),
+        children: (frame.children || []).length,
+        textNodes: texts.length,
+        fonts: [...families],
+        minFontSize: sizes.length ? Math.min(...sizes) : null,
+        maxFontSize: sizes.length ? Math.max(...sizes) : null,
+        layoutGrids: 'layoutGrids' in frame ? frame.layoutGrids.length : null,
+        fills: 'fills' in frame && Array.isArray(frame.fills) ? frame.fills.map(paintLabel).slice(0, 2) : null,
+      })
+    }
+    return { page: root.type === 'PAGE' ? root.name : null, count: frames.length, frames }
+  },
+
   async pages() {
     return figma.root.children.map((p) => ({ id: p.id, name: p.name, type: p.type }))
   },

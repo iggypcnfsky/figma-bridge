@@ -13,11 +13,15 @@ executed inside Figma by a plugin, through the Figma Plugin API. No OAuth, no to
 
 ## Preconditions — check before anything else
 
+`figma` is on `PATH`, so **never search the filesystem for the repo**:
+
 ```bash
-cd <repo>/figma-bridge
-./bin/figma status     # {"ok":true,"pluginConnected":true,"clients":[...]}
-./bin/figma clients    # id, file, page of every connected Figma window
+figma doctor        # repo, server, connected windows, img-forge + FAL key in one shot
+figma clients       # id, file, page of every connected Figma window
 ```
+
+If the command is missing, use `node "$(figma where)/server.mjs"` only after asking; do not `find` the
+repo, and do not guess paths.
 
 - `pluginConnected: false` → stop. Ask the user to run `Plugins → Development → Figma Bridge`
   in the window of the file they want touched. Retrying does not help.
@@ -46,7 +50,7 @@ cd <repo>/figma-bridge
 ./bin/figma image 12:34 out/cover.png FILL      # local image file → fill (no cloud upload)
 ```
 
-Ops: `ping status pages variables styles fonts` · `selection node find` · `createFrame createRect
+Ops: `ping status pages variables styles fonts inventory` · `selection node find` · `createFrame createRect
 createEllipse createText createPage createInstance` · `update clone reparent remove goto group ungroup
 select` · `grids setGrids align distribute effects` · `applyStyle varFill` · `export imageFill` · `exec`.
 Full parameters: `docs/ops-reference.md`.
@@ -121,6 +125,9 @@ Presets saved in that panel live in `figma-bridge/presets.json`.
 - Positions are relative to the parent, and an omitted `parentId` means the **current page**.
 - Typography questions (which fonts, sizes, counts) are one call: `{"op":"fonts"}`; add
   `"allPages":true` for the whole file. Do not walk frames with your own script.
+- A slide deck overview is one call too: `{"op":"inventory"}` returns every frame with geometry,
+  `minFontSize`, fonts, grid count and fills — enough to pick "frames 11–19" or find text below a
+  minimum size.
 - Never index a field the reference does not list. `summary` carries `font`, `fontSize`, `lineHeight`
   and `letterSpacing` for TEXT; everything else comes from `exec` with the real API name. Mixed styles
   are the string `"MIXED"`, so guard with `.get()` and fallbacks.

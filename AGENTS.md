@@ -16,8 +16,19 @@ agent ──HTTP──▶ server.mjs (localhost:3847) ◀──long-poll── p
 
 ## Preconditions (check before you start)
 
-1. The server is up: `curl -s localhost:3847/status` → `{"ok":true,...}`.
-   If not: `cd figma-bridge && node server.mjs &` (or run it as a background job).
+**Do not hunt for this repo.** `figma` is installed on `PATH` (symlink in `~/.local/bin`), so every
+command works from any directory:
+
+```bash
+figma doctor     # repo path, server state, connected Figma windows, img-forge + FAL key
+```
+
+If `figma` is missing, the absolute path is printed by the skill or recoverable with
+`figma where`; as a last resort the repo lives next to this workspace checkout. Only then fall back to
+starting the server yourself.
+
+1. The server is up: `figma status` → `{"ok":true,...}`.
+   If not: `node "$(figma where)/server.mjs" &` (a DSH plugin normally keeps it running).
 2. In Figma (desktop app), in the target file's window, the **Plugins → Development → Figma Bridge**
    plugin is running. The plugin window must stay open — it *is* the connection.
 3. `pluginConnected: true` in `/status`. If it is `false`, do not send operations — you will get 503.
@@ -94,8 +105,8 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
 
 | Group | Operations |
 |---|---|
-| Diagnostics | `ping`, `status`, `pages`, `variables`, `styles`, `fonts` |
-| Read | `selection`, `node`, `find` |
+| Diagnostics | `ping`, `status`, `pages`, `variables`, `styles`, `fonts`, `inventory` |
+| Read | `selection`, `node`, `find`, `inventory` |
 | Create | `createFrame`, `createRect`, `createEllipse`, `createText`, `createPage`, `createInstance` |
 | Components | `instanceText`, `instanceProps` |
 | Modify | `update`, `clone`, `reparent`, `remove`, `goto`, `group`, `ungroup`, `select` |
