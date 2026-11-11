@@ -168,11 +168,49 @@ Returns `{ id, name, characters }`.
 Supported `props`: `name, x, y, width, height, opacity, visible, cornerRadius, clipsContent, rotation,
 fills, strokes, strokeWeight, layoutMode, primaryAxisSizingMode, counterAxisSizingMode, itemSpacing,
 counterAxisSpacing, paddingTop/Right/Bottom/Left, primaryAxisAlignItems, counterAxisAlignItems,
-layoutSizingHorizontal, layoutSizingVertical, textAlignHorizontal, textAlignVertical, textAutoResize,
-characters, fontSize`.
+layoutSizingHorizontal, layoutSizingVertical, textAlignHorizontal, textAlignVertical, textAutoResize`.
+
+Text properties are delegated to the [`text`](#text) logic, so they also work here: `characters,
+fontName ({family, style}), fontFamily, fontStyle, fontSize, lineHeight, letterSpacing, range`.
+
+Styles can be applied by name: `textStyle`, `fillStyle`, `strokeStyle`, `effectStyle`, `gridStyle`.
+They go through the async setters, so they work under `dynamic-page`.
 
 `fills`/`strokes`: array of hex strings, or `null`. Returns `{ id, name, applied, skipped }` —
 `skipped` lists properties the node type does not have.
+
+## text
+
+Changes the appearance of an **existing** text node — the operation that used to require `exec`.
+
+| parameter | meaning |
+|---|---|
+| `nodeId` | text node (required) |
+| `characters` | replace the whole content (whole node only) |
+| `fontFamily`, `fontStyle` | e.g. `"Poppins"`, `"SemiBold"` — loaded via `loadFontAsync`; either one alone reuses the current value of the other |
+| `fontSize` | number, px |
+| `lineHeight` | number (px), `"AUTO"`, or `"140%"` |
+| `letterSpacing` | number (px) or `"5%"` |
+| `color` | hex fill, or `null` to clear |
+| `textStyle` | name of a local text style — applies to the whole node |
+| `textAlignHorizontal`, `textAlignVertical`, `textAutoResize` | as in the Plugin API |
+| `range` | `{start, end}` — restrict font/size/lineHeight/letterSpacing/color to a character range |
+
+Returns `{ id, name, changed, range, text }` where `text` is the same typography block that `node`
+returns (`font`, `fontSize`, `lineHeight`, `letterSpacing`, …) after the change.
+
+```bash
+# a whole title: family + weight + size + line height
+./bin/figma op '{"op":"text","nodeId":"12:34","fontFamily":"Poppins","fontStyle":"SemiBold","fontSize":40,"lineHeight":48}'
+# one word inside a body paragraph, keeping everything else
+./bin/figma op '{"op":"text","nodeId":"12:34","fontStyle":"Bold","range":{"start":0,"end":12}}'
+# a named style instead of loose values
+./bin/figma op '{"op":"text","nodeId":"12:34","textStyle":"body/25"}'
+```
+
+Mixed fonts: when the node uses several fonts, `fontFamily`/`fontStyle` need a `range` (or both
+values) — the operation fails rather than guessing. Mutating part of a text node loads every font in
+that range first, because Figma refuses writes to unloaded fonts.
 
 ## clone
 
@@ -406,9 +444,11 @@ with Figma's message instead of half-applying.
 |---|---|
 | `nodeId` | node |
 | `styleName` | exact name, or a suffix after `/` (`text/heading/xl` matches `heading/xl`) |
-| `kind` | `text` (default), `paint`, or `grid` (applies a saved `saveStyle` grid style) |
+| `kind` | `text` (default), `paint`, `effect`, or `grid` (applies a saved `saveStyle` grid style) |
 
-Uses `setTextStyleIdAsync` / `setFillStyleIdAsync`, so it works under `dynamic-page`.
+Uses `setTextStyleIdAsync` / `setFillStyleIdAsync` / `setGridStyleIdAsync`, so it works under
+`dynamic-page`. For a text style on a text node, the [`text`](#text) op with `textStyle` does the same
+and returns the resulting typography.
 
 ## group / ungroup / select
 
@@ -459,7 +499,7 @@ Returns `{ id, imageHash, bytes }`.
 
 | parameter | meaning |
 |---|---|
-| `code` | body of an async function; `figma` is in scope |
+| `code` | body of an async function; `figma` and `$` are in scope |
 
 ```json
 { "op": "exec", "code": "const n = await figma.getNodeByIdAsync('1:2'); return { name: n.name }" }
@@ -468,3 +508,22 @@ Returns `{ id, imageHash, bytes }`.
 Returns `{ value }` — the result must be JSON-serializable. Figma's sandbox **does** allow
 `new Function` (verified), so this is the full Plugin API. Use it sparingly: it bypasses parameter
 validation and can do more to a file than you intended.
+
+`$` carries the parts that are easy to get wrong — every style setter is asynchronous, because the
+manifest runs with `documentAccess: "dynamic-page"`. `node.textStyleId = style.id` throws
+`Cannot call with documentAccess: dynamic-page`; `$` never does.
+
+| helper | returns |
+|---|---|
+| `$.node(id)` | the node (async) |
+| `$.text(node, spec)` | same spec as the [`text`](#text) op |
+| `$.font(node, family, style)` | sets the font, loading it first |
+| `$.textStyle(name)`, `$.paintStyle(name)`, `$.effectStyle(name)`, `$.gridStyle(name)` | the style object |
+| `$.setTextStyle(node, styleOrName)`, `$.setFillStyle`, `$.setStrokeStyle`, `$.setEffectStyle`, `$.setGridStyle` | applies it, returns `{id, name, kind}` |
+
+```json
+{ "op": "exec", "code": "const n = await $.node('1:2'); await $.setTextStyle(n, 'body/25'); return n.textStyleId" }
+```
+
+If a style error does come back, the message now names the bridge path to use instead — it is not a
+dead end, it is a hint.

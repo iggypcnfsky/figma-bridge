@@ -56,8 +56,9 @@ repo, and do not guess paths.
 ```
 
 Ops: `ping status pages variables styles fonts inventory` · `selection node find` · `createFrame createRect
-createEllipse createText createPage createInstance` · `update clone reparent remove goto group ungroup
-select` · `grids setGrids align distribute effects` · `applyStyle varFill` · `export imageFill` · `exec`.
+createEllipse createText createPage createInstance` · `update text clone reparent remove goto group
+ungroup select` · `grids setGrids align distribute effects` · `applyStyle varFill` · `export imageFill` ·
+`exec`.
 Full parameters: `docs/ops-reference.md`.
 
 Design-work shortcuts worth knowing:
@@ -79,6 +80,11 @@ Design-work shortcuts worth knowing:
   use it instead of exporting a screenshot to judge alignment.
 - **styles**: `saveStyle` creates or updates a `text` / `paint` / `effect` / `grid` style by name, and
   `applyStyle` applies it. Create the token once, apply it everywhere.
+- **changing type on existing text** is the `text` op — not `exec`, and not loose assignments:
+  `{"op":"text","nodeId":"…","fontFamily":"Poppins","fontStyle":"SemiBold","fontSize":40,"lineHeight":48}`.
+  A single word keeps the rest intact with `"range":{"start":0,"end":12}`; `"textStyle":"body/25"`
+  applies a named style. Style ids are async under `dynamic-page`
+  (`node.textStyleId = …` throws) — inside `exec` use `await $.setTextStyle(node, name)`.
 - **responsive**: `sizing` sets `HUG`/`FILL`/`FIXED` per axis plus min/max; `constraints` covers
   non-auto-layout children (`STRETCH`/`MIN`/`MAX`/`CENTER`/`SCALE`). Read both from `node` before
   changing them — `sizing` returns `skipped` with Figma's reason when a property does not apply.

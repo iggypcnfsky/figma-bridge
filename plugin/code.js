@@ -207,6 +207,217 @@ async function loadFont(family, style) {
   return fontName
 }
 
+// ------------------------------------------------------------------ styles
+
+async function styleList(kind) {
+  if (kind === 'text') return await textStyles()
+  if (kind === 'paint') return await paintStyles()
+  if (kind === 'effect') {
+    if (typeof figma.getLocalEffectStylesAsync === 'function') return await figma.getLocalEffectStylesAsync()
+    return figma.getLocalEffectStyles()
+  }
+  if (kind === 'grid') {
+    if (typeof figma.getLocalGridStylesAsync === 'function') return await figma.getLocalGridStylesAsync()
+    return figma.getLocalGridStyles()
+  }
+  fail('unknown style kind: ' + kind + ' (text | paint | effect | grid)')
+}
+
+/** Dokładna nazwa, potem sufiks po `/` — tak samo jak w `applyStyle`. */
+async function styleByName(kind, name) {
+  if (!name) fail('missing style name')
+  const list = await styleList(kind)
+  const needle = String(name)
+  const found =
+    list.find((style) => style.name === needle) ||
+    list.find((style) => style.name.endsWith('/' + needle))
+  if (!found) fail(kind + ' style not found: ' + needle + ' — `styles` lists what exists')
+  return found
+}
+
+// `documentAccess: "dynamic-page"` blokuje synchroniczne settery stylów:
+// `node.textStyleId = id` rzuca "Cannot call with documentAccess: dynamic-page".
+// Zawsze idziemy więc przez wariant Async, z fallbackiem dla starszych API.
+async function applyStyleId(node, kind, style) {
+  const setters = {
+    text: ['setTextStyleIdAsync', 'textStyleId'],
+    paint: ['setFillStyleIdAsync', 'fillStyleId'],
+    stroke: ['setStrokeStyleIdAsync', 'strokeStyleId'],
+    effect: ['setEffectStyleIdAsync', 'effectStyleId'],
+    grid: ['setGridStyleIdAsync', 'gridStyleId'],
+  }
+  const entry = setters[kind]
+  if (!entry) fail('unknown style kind: ' + kind)
+  const [asyncName, prop] = entry
+  if (!(prop in node)) fail(node.type + ' cannot take a ' + kind + ' style')
+  if (typeof node[asyncName] === 'function') await node[asyncName](style.id)
+  else node[prop] = style.id
+  return { id: style.id, name: style.name, kind }
+}
+
+// ------------------------------------------------------------------ typografia
+
+function fontKey(font) {
+  return font.family + ' / ' + font.style
+}
+
+/** Fragment tekstu można zmienić tylko po wczytaniu fontów, które w nim są. */
+async function loadFontsInRange(node, start, end) {
+  const fonts = new Map()
+  const add = (font) => {
+    if (font && font !== figma.mixed) fonts.set(fontKey(font), font)
+  }
+  if (typeof node.getRangeAllFontNames === 'function') {
+    try {
+      node.getRangeAllFontNames(start, end).forEach(add)
+    } catch (err) {
+      /* puste albo niejednolite zakresy potrafią rzucić — schodzimy do pętli */
+    }
+  }
+  if (fonts.size === 0) {
+    const cap = Math.min(end, start + 500)
+    for (let i = start; i < cap; i += 1) add(node.getRangeFontName(i, i + 1))
+  }
+  add(node.fontName)
+  await Promise.all([...fonts.values()].map((font) => figma.loadFontAsync(font)))
+  return [...fonts.values()]
+}
+
+function lineHeightSpec(value) {
+  if (value === null || value === undefined || value === 'AUTO') return { unit: 'AUTO' }
+  if (typeof value === 'number') return { unit: 'PIXELS', value }
+  const text = String(value).trim()
+  if (text.endsWith('%')) return { unit: 'PERCENT', value: Number(text.slice(0, -1)) }
+  if (text.toUpperCase() === 'AUTO') return { unit: 'AUTO' }
+  const num = Number(text)
+  if (Number.isNaN(num)) fail('lineHeight must be a number (px), "AUTO", or "120%": ' + value)
+  return { unit: 'PIXELS', value: num }
+}
+
+function letterSpacingSpec(value) {
+  if (typeof value === 'number') return { unit: 'PIXELS', value }
+  const text = String(value).trim()
+  if (text.endsWith('%')) return { unit: 'PERCENT', value: Number(text.slice(0, -1)) }
+  const num = Number(text)
+  if (Number.isNaN(num)) fail('letterSpacing must be a number (px) or "5%": ' + value)
+  return { unit: 'PIXELS', value: num }
+}
+
+/**
+ * Zmienia wygląd istniejącego tekstu: font (rodzina + odmiana), rozmiar, interlinia,
+ * spacje, kolor, wyrównanie i styl nazwany — na całym węźle albo na zakresie znaków.
+ */
+async function applyText(node, spec = {}) {
+  if (!node || node.type !== 'TEXT') fail('node ' + (node && node.id) + ' is not TEXT')
+  const {
+    characters,
+    fontFamily,
+    fontStyle,
+    fontSize,
+    lineHeight,
+    letterSpacing,
+    color,
+    textStyle,
+    textAlignHorizontal,
+    textAlignVertical,
+    textAutoResize,
+    range,
+  } = spec
+
+  const whole = !range
+  const length = String(node.characters).length
+  const start = whole ? 0 : Math.max(0, Math.min(length, Number(range.start === undefined ? 0 : range.start)))
+  const end = whole ? length : Math.max(start, Math.min(length, Number(range.end === undefined ? length : range.end)))
+  const partial = !whole && (start > 0 || end < length)
+  if (!whole && end <= start) fail('empty range ' + start + '–' + end)
+
+  const changed = []
+
+  if (textStyle) {
+    if (!whole) fail('a text style applies to the whole node — drop `range`')
+    const style = await styleByName('text', textStyle)
+    await applyStyleId(node, 'text', style)
+    changed.push('textStyle')
+  }
+
+  if (characters !== undefined) {
+    if (!whole) fail('`characters` replaces the whole content — drop `range`')
+    node.characters = String(characters)
+    changed.push('characters')
+  }
+
+  const needsFonts = partial && (
+    fontFamily !== undefined || fontStyle !== undefined ||
+    fontSize !== undefined || lineHeight !== undefined || letterSpacing !== undefined || color !== undefined
+  )
+  if (needsFonts) await loadFontsInRange(node, start, end)
+
+  if (fontFamily !== undefined || fontStyle !== undefined) {
+    let base = node.fontName === figma.mixed ? null : node.fontName
+    // mixed node + range: the range itself knows which family it uses
+    if (!base && !whole) {
+      const first = node.getRangeFontName(start, Math.min(start + 1, end))
+      if (first && first !== figma.mixed) base = first
+    }
+    if (!base) fail('font is mixed here — pass fontFamily (and fontStyle) or a `range`')
+    const family = fontFamily !== undefined ? fontFamily : base.family
+    const styleName = fontStyle !== undefined ? fontStyle : base.style
+    const font = await loadFont(family, styleName)
+    if (whole) node.fontName = font
+    else node.setRangeFontName(start, end, font)
+    changed.push('font')
+  }
+
+  if (fontSize !== undefined) {
+    if (whole) node.fontSize = Number(fontSize)
+    else node.setRangeFontSize(start, end, Number(fontSize))
+    changed.push('fontSize')
+  }
+
+  if (lineHeight !== undefined) {
+    const value = lineHeightSpec(lineHeight)
+    if (whole) node.lineHeight = value
+    else node.setRangeLineHeight(start, end, value)
+    changed.push('lineHeight')
+  }
+
+  if (letterSpacing !== undefined) {
+    const value = letterSpacingSpec(letterSpacing)
+    if (whole) node.letterSpacing = value
+    else node.setRangeLetterSpacing(start, end, value)
+    changed.push('letterSpacing')
+  }
+
+  if (color !== undefined) {
+    if (whole) node.fills = color === null ? [] : [paint(color)]
+    else node.setRangeFills(start, end, color === null ? [] : [paint(color)])
+    changed.push('color')
+  }
+
+  if (textAlignHorizontal !== undefined) {
+    node.textAlignHorizontal = textAlignHorizontal
+    changed.push('textAlignHorizontal')
+  }
+  if (textAlignVertical !== undefined) {
+    node.textAlignVertical = textAlignVertical
+    changed.push('textAlignVertical')
+  }
+  if (textAutoResize !== undefined) {
+    node.textAutoResize = textAutoResize
+    changed.push('textAutoResize')
+  }
+
+  if (changed.length === 0) fail('nothing to change — pass fontFamily, fontStyle, fontSize, lineHeight, letterSpacing, color, textStyle, characters, align or autoResize')
+
+  return {
+    id: node.id,
+    name: node.name,
+    changed,
+    range: whole ? 'whole' : { start, end },
+    text: textInfo(node),
+  }
+}
+
 // figma.currentUser requires the "currentuser" permission in the manifest — it throws without it.
 // status must always work, so the degradation is silent.
 function currentUserName() {
@@ -495,11 +706,81 @@ const OPS = {
 
   async update({ nodeId, props = {} } = {}) {
     const n = await getNode(nodeId)
-    if (n.type === 'TEXT' && ('characters' in props || 'fontSize' in props || 'fontName' in props)) {
-      await figma.loadFontAsync(n.fontName)
+    const rest = Object.assign({}, props)
+    const applied = []
+
+    // Style properties are set by name, through the async setters (dynamic-page safe).
+    const styleKinds = { textStyle: 'text', fillStyle: 'paint', strokeStyle: 'stroke', effectStyle: 'effect', gridStyle: 'grid' }
+    for (const [key, kind] of Object.entries(styleKinds)) {
+      if (!(key in rest)) continue
+      const name = rest[key]
+      delete rest[key]
+      await applyStyleId(n, kind, await styleByName(kind, name))
+      applied.push(key)
     }
-    const skipped = applyProps(n, props)
-    return { id: n.id, name: n.name, applied: Object.keys(props).filter((k) => skipped.indexOf(k) === -1), skipped }
+
+    // Typography on an existing text node — the same code path as the `text` op.
+    if (n.type === 'TEXT') {
+      const spec = {}
+      if ('characters' in rest) { spec.characters = rest.characters; delete rest.characters }
+      const fontName = rest.fontName
+      if (fontName && typeof fontName === 'object') {
+        spec.fontFamily = fontName.family
+        spec.fontStyle = fontName.style
+        delete rest.fontName
+      }
+      if ('fontFamily' in rest) { spec.fontFamily = rest.fontFamily; delete rest.fontFamily }
+      if ('fontStyle' in rest) { spec.fontStyle = rest.fontStyle; delete rest.fontStyle }
+      if ('fontSize' in rest) { spec.fontSize = rest.fontSize; delete rest.fontSize }
+      if ('lineHeight' in rest) { spec.lineHeight = rest.lineHeight; delete rest.lineHeight }
+      if ('letterSpacing' in rest) { spec.letterSpacing = rest.letterSpacing; delete rest.letterSpacing }
+      if ('range' in rest) { spec.range = rest.range; delete rest.range }
+      if (Object.keys(spec).length > 0) {
+        await applyText(n, spec)
+        applied.push(...Object.keys(spec))
+      }
+    }
+
+    const skipped = applyProps(n, rest)
+    return {
+      id: n.id,
+      name: n.name,
+      applied: applied.concat(Object.keys(rest).filter((k) => skipped.indexOf(k) === -1)),
+      skipped,
+    }
+  },
+
+  /** Zmiana wyglądu istniejącego tekstu: font, rozmiar, interlinia, styl nazwany, zakres znaków. */
+  async text({
+    nodeId,
+    characters,
+    fontFamily,
+    fontStyle,
+    fontSize,
+    lineHeight,
+    letterSpacing,
+    color,
+    textStyle,
+    textAlignHorizontal,
+    textAlignVertical,
+    textAutoResize,
+    range,
+  } = {}) {
+    const node = await getNode(nodeId)
+    return await applyText(node, {
+      characters,
+      fontFamily,
+      fontStyle,
+      fontSize,
+      lineHeight,
+      letterSpacing,
+      color,
+      textStyle,
+      textAlignHorizontal,
+      textAlignVertical,
+      textAutoResize,
+      range,
+    })
   },
 
   async clone({ nodeId, parentId, index, x, y } = {}) {
@@ -1072,30 +1353,13 @@ const OPS = {
   /** Stosuje istniejący styl lokalny po nazwie (dokładnej albo po fragmencie). */
   async applyStyle({ nodeId, styleName, kind = 'text' } = {}) {
     if (!styleName) fail('missing styleName')
+    if (['text', 'paint', 'effect', 'grid'].indexOf(kind) === -1) {
+      fail('kind must be text | paint | effect | grid (got "' + kind + '")')
+    }
     const node = await getNode(nodeId)
-    const pick = (list) => list.find((style) => style.name === styleName) || list.find((style) => style.name.endsWith('/' + styleName))
-    if (kind === 'text') {
-      const style = pick(await textStyles())
-      if (!style) fail('text style not found: ' + styleName)
-      if (typeof node.setTextStyleIdAsync === 'function') await node.setTextStyleIdAsync(style.id)
-      else node.textStyleId = style.id
-      return { id: node.id, style: { id: style.id, name: style.name } }
-    }
-    if (kind === 'grid') {
-      const grids = await (typeof figma.getLocalGridStylesAsync === 'function' ? figma.getLocalGridStylesAsync() : figma.getLocalGridStyles())
-      const style = pick(grids)
-      if (!style) fail('grid style not found: ' + styleName)
-      if (!('gridStyleId' in node)) fail(node.type + ' cannot take a grid style')
-      if (typeof node.setGridStyleIdAsync === 'function') await node.setGridStyleIdAsync(style.id)
-      else node.gridStyleId = style.id
-      return { id: node.id, style: { id: style.id, name: style.name } }
-    }
-
-    const style = pick(await paintStyles())
-    if (!style) fail('paint style not found: ' + styleName)
-    if (typeof node.setFillStyleIdAsync === 'function') await node.setFillStyleIdAsync(style.id)
-    else node.fillStyleId = style.id
-    return { id: node.id, style: { id: style.id, name: style.name } }
+    const style = await styleByName(kind, styleName)
+    const appliedTo = await applyStyleId(node, kind, style)
+    return { id: node.id, style: { id: style.id, name: style.name, kind: appliedTo.kind } }
   },
 
   async group({ nodeIds, name } = {}) {
@@ -1156,13 +1420,53 @@ const OPS = {
     let fn
     try {
       // eslint-disable-next-line no-new-func
-      fn = new Function('figma', 'return (async () => { ' + code + ' })()')
+      fn = new Function('figma', '$', 'return (async () => { ' + code + ' })()')
     } catch (err) {
       fail('sandbox rejected new Function: ' + err.message)
     }
-    const value = await fn(figma)
+    const value = await fn(figma, EXEC_HELPERS)
     return { value: value === undefined ? null : value }
   },
+}
+
+// --------------------------------------------------------------- exec helpers
+
+// W `exec` agent ma ręcznie pisany JS, więc najczęstsze pułapki dostaje jako funkcje:
+// `$` jest w zasięgu obok `figma`. Wszystko, co dotyka stylów, jest asynchroniczne —
+// synchroniczny setter (`node.textStyleId = …`) rzuca pod `documentAccess: "dynamic-page"`.
+const EXEC_HELPERS = Object.freeze({
+  node: (id) => getNode(id),
+  text: (node, spec) => applyText(node, spec),
+  font: (node, family, style) => applyText(node, { fontFamily: family, fontStyle: style }),
+  textStyle: (name) => styleByName('text', name),
+  paintStyle: (name) => styleByName('paint', name),
+  effectStyle: (name) => styleByName('effect', name),
+  gridStyle: (name) => styleByName('grid', name),
+  // setters accept either a style object or its name
+  setTextStyle: async (node, style) => applyStyleId(node, 'text', await resolveStyle('text', style)),
+  setFillStyle: async (node, style) => applyStyleId(node, 'paint', await resolveStyle('paint', style)),
+  setStrokeStyle: async (node, style) => applyStyleId(node, 'stroke', await resolveStyle('paint', style)),
+  setEffectStyle: async (node, style) => applyStyleId(node, 'effect', await resolveStyle('effect', style)),
+  setGridStyle: async (node, style) => applyStyleId(node, 'grid', await resolveStyle('grid', style)),
+})
+
+async function resolveStyle(kind, style) {
+  return typeof style === 'string' ? await styleByName(kind, style) : style
+}
+
+// ------------------------------------------------------------- error translator
+
+// Figma mówi "Use node.setTextStyleIdAsync instead", ale nie mówi, którą operację mostka
+// wybrać. Dopisujemy naszą drogę, żeby agent nie powtarzał tego samego błędu.
+const DYNAMIC_PAGE_STYLE = /Cannot call with documentAccess|documentAccess: dynamic-page/i
+
+function explainError(message) {
+  if (!DYNAMIC_PAGE_STYLE.test(message)) return message
+  return (
+    message +
+    ' — in dynamic-page mode style ids are asynchronous: use the `text` op with `textStyle`,'
+    + ' `applyStyle` with `kind`, or inside exec `await $.setTextStyle(node, await $.textStyle("Name"))`.'
+  )
 }
 
 // ------------------------------------------------------------ dynamic-page retry
@@ -1281,8 +1585,9 @@ figma.ui.onmessage = async (msg) => {
       results.push({ index: i, op: op.op, ok: true, value })
     } catch (err) {
       ok = false
-      error = 'op #' + i + ' (' + String(op.op) + '): ' + (err && err.message ? err.message : String(err))
-      results.push({ index: i, op: op.op, ok: false, error: err && err.message ? err.message : String(err) })
+      const message = explainError(err && err.message ? err.message : String(err))
+      error = 'op #' + i + ' (' + String(op.op) + '): ' + message
+      results.push({ index: i, op: op.op, ok: false, error: message })
       break
     }
   }

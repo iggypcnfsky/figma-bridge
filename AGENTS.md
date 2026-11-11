@@ -114,7 +114,7 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
 | Read | `selection`, `node`, `find`, `inventory` |
 | Create | `createFrame`, `createRect`, `createEllipse`, `createText`, `createPage`, `createInstance` |
 | Components | `instanceText`, `instanceProps` |
-| Modify | `update`, `clone`, `reparent`, `remove`, `goto`, `group`, `ungroup`, `select` |
+| Modify | `update`, `text`, `clone`, `reparent`, `remove`, `goto`, `group`, `ungroup`, `select` |
 | Layout | `grids`, `setGrids`, `align`, `distribute`, `constraints`, `sizing`, `effects`, `gradient` |
 | Measure/place | `measure`, `placeNear` |
 | Styles | `styles`, `saveStyle`, `applyStyle`, `varFill` |
@@ -158,6 +158,13 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
   never fails, but `user` may be `null` if the manifest was not re-imported with that permission.
 - **No variables is not a bridge error.** `variables` may return `collections: []` — then `varFill`
   has nothing to bind. Check `variables` first.
+- **Style ids are asynchronous.** The manifest runs with `documentAccess: "dynamic-page"`, so
+  `node.textStyleId = style.id` (and `fillStyleId`, `effectStyleId`, `gridStyleId`) throws
+  `Cannot call with documentAccess: dynamic-page`. Use the `text` op, `applyStyle`, or inside `exec`
+  the `$` helpers (`$.setTextStyle(node, name)`). The bridge translates that error into this advice.
+- **Changing type on an existing node is `text`, not `update`.** `update` still accepts `fontName`,
+  `fontSize`, `lineHeight` and `characters` (it delegates), but `text` also handles `range`,
+  `textStyle` and per-property `changed`/after-state reporting.
 - **Text needs a font.** `createText` calls `loadFontAsync` itself; if the family is neither in the
   file nor installed locally, the operation fails on the font — use `Inter` as a safe default.
 - **Read the documented fields, do not assume them.** A script that indexes `result['lh']` or any
@@ -191,6 +198,7 @@ figma-bridge/
   docs/assets/         ← demo GIF and screenshots
   .agents/skills/figma-bridge/SKILL.md ← skill (auto-loaded by DSH)
   scripts/mock-plugin.mjs ← protocol test without Figma
+  scripts/test-typography.mjs ← unit test: text/update/applyStyle against a fake Figma API
   scripts/demo-build.sh / make-demo-gif.py ← reproduce the demo GIF
   out/                 ← exports (gitignored)
 ```
