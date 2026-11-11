@@ -167,7 +167,7 @@
       <div id="modeHint" class="dim hidden"></div>
 
       <div id="genBody">
-      <div id="refRow">
+      <div id="refRow" class="hidden">
         <div class="row">
           <button id="useSel">Use selection</button>
           <button id="addSel">Add selection</button>
@@ -1744,7 +1744,9 @@
       }
 
       // ------------------------------------------------------------------ start
-      $('go').innerHTML = ICONS.spark + '<span>Generate</span>'
+      // Bez tego panel startował z zakładką Generate, ale z widocznymi wierszami Edit
+      // (selekcja, maski) — stan był ustawiany dopiero po kliknięciu zakładki.
+      setMode('gen')
 
       $('sizeW').oninput = $('sizeH').oninput = () => {
         const size = currentSize()
@@ -1753,6 +1755,8 @@
 
       $('sizeW').value = state.custom.width
       $('sizeH').value = state.custom.height
+      renderRefs()
+      renderMasks()
 
       $('copyLog').innerHTML = ICONS.copy + '<span>Copy</span>'
       $('copyLog').onclick = async () => {
