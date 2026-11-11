@@ -158,8 +158,10 @@ being re-cropped to a fixed aspect. From the CLI it is the same thing without th
 
 A **mask** narrows the edit to part of the image. fal's rule is blunt: **white = change, black =
 keep**, and the mask must be the size of the image. The panel paints it for you — *Paint mask…* opens
-the first reference with a brush (erase with `E`, *Clear*, *Use mask*) and sends the result at the
-reference's exact size, so nothing drifts. If you would rather build the mask in Figma, paint the area
+the first reference with a brush (erase with `E`, *Clear*, *Use mask*). The strokes are stored at the
+image's own resolution (1920×1080 reference ⇒ 1920×1080 mask, no upscaling at save) while the preview
+is only a window rendered at device pixels, so enlarging the panel makes it sharper instead of
+blockier. If you would rather build the mask in Figma, paint the area
 white on a black frame and use *From selection*; the panel thresholds it to pure black and white.
 
 **Several masks, several instructions.** Each mask in the list has its own name, its own colour and

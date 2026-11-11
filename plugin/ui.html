@@ -79,8 +79,8 @@
       .ref button:hover { background: rgba(0,0,0,.85); }
       .refnum { position: absolute; left: 0; bottom: 0; font-size: 8px; line-height: 11px; padding: 0 3px;
         background: rgba(0,0,0,.65); color: #fff; border-radius: 0 4px 0 0; pointer-events: none; }
-      #maskCanvas { width: 100%; border-radius: 5px; border: 1px solid var(--figma-color-border, #ddd);
-        touch-action: none; cursor: crosshair; display: block; background: #000; }
+      #maskCanvas { max-width: 100%; border-radius: 5px; border: 1px solid var(--figma-color-border, #ddd);
+        touch-action: none; cursor: crosshair; display: block; background: #000; margin: 0 auto; }
       #maskRow #maskInfo { font-size: 10px; opacity: .75; }
       #brushSize { width: 90px; }
       #maskList { display: flex; flex-direction: column; gap: 4px; }
@@ -620,112 +620,88 @@
         return mask
       }
 
+      // Maska żyje w pełnej rozdzielczości referencji — podgląd jest tylko oknem na nią.
+      // Dzięki temu pędzel nie jest później rozciągany z 700 px na 1920 px (stąd pixeloza).
       function seedOverlayFromMask(mask) {
-        if (!mask || !state.maskBase) return
         const base = state.maskBase
+        if (!mask || !base) return
         const image = new Image()
         image.onload = () => {
           const scratch = document.createElement('canvas')
-          scratch.width = base.overlay.width
-          scratch.height = base.overlay.height
+          scratch.width = base.maskCanvas.width
+          scratch.height = base.maskCanvas.height
           const sctx = scratch.getContext('2d')
           sctx.drawImage(image, 0, 0, scratch.width, scratch.height)
-          const pixels = sctx.getImageData(0, 0, scratch.width, scratch.height).data
-          const out = sctx.createImageData(scratch.width, scratch.height)
-          const rgb = hexToRgb(base.color || '#ff00ff')
-          for (let i = 0; i < pixels.length; i += 4) {
-            if (pixels[i] > 128) {
-              out.data[i] = rgb.r
-              out.data[i + 1] = rgb.g
-              out.data[i + 2] = rgb.b
-              out.data[i + 3] = 255
+          const pixels = sctx.getImageData(0, 0, scratch.width, scratch.height)
+          const rgb = hexToRgb(mask.color)
+          for (let i = 0; i < pixels.data.length; i += 4) {
+            if (pixels.data[i] > 128) {
+              pixels.data[i] = rgb.r
+              pixels.data[i + 1] = rgb.g
+              pixels.data[i + 2] = rgb.b
+              pixels.data[i + 3] = 255
+            } else {
+              pixels.data[i + 3] = 0
             }
           }
-          base.overlay.getContext('2d').putImageData(out, 0, 0)
+          base.maskCanvas.getContext('2d').putImageData(pixels, 0, 0)
           redrawMask()
         }
         image.src = 'data:image/png;base64,' + mask.base64
-      }
-
-      async function combineMasks(masks, ref) {
-        const width = Math.round(ref.width || 1024)
-        const height = Math.round(ref.height || 1024)
-        const baseImage = await loadImage('data:image/png;base64,' + ref.base64)
-
-        const union = document.createElement('canvas')
-        union.width = width
-        union.height = height
-        const uctx = union.getContext('2d')
-        uctx.fillStyle = '#000'
-        uctx.fillRect(0, 0, width, height)
-
-        const colorMap = document.createElement('canvas')
-        colorMap.width = width
-        colorMap.height = height
-        const cctx = colorMap.getContext('2d')
-        cctx.drawImage(baseImage, 0, 0, width, height)
-
-        for (const mask of masks) {
-          const image = await loadImage('data:image/png;base64,' + mask.base64)
-          uctx.drawImage(image, 0, 0, width, height) // biel wygrywa, więc OR wychodzi sam
-          const tint = document.createElement('canvas')
-          tint.width = width
-          tint.height = height
-          const tctx = tint.getContext('2d')
-          tctx.drawImage(image, 0, 0, width, height)
-          const pixels = tctx.getImageData(0, 0, width, height)
-          const rgb = hexToRgb(mask.color)
-          for (let i = 0; i < pixels.data.length; i += 4) {
-            const on = pixels.data[i] > 128
-            pixels.data[i] = rgb.r
-            pixels.data[i + 1] = rgb.g
-            pixels.data[i + 2] = rgb.b
-            pixels.data[i + 3] = on ? 255 : 0
-          }
-          tctx.putImageData(pixels, 0, 0)
-          cctx.globalAlpha = 0.75
-          cctx.drawImage(tint, 0, 0)
-          cctx.globalAlpha = 1
-        }
-
-        return {
-          mask: { filename: 'mask-union.png', base64: union.toDataURL('image/png').split(',')[1], width, height },
-          colorMap: { filename: 'color-map.png', base64: colorMap.toDataURL('image/png').split(',')[1] },
-        }
-      }
-
-      function legendFor(masks) {
-        const parts = masks.map((mask) => {
-          const instruction = expandRefs((mask.instruction || '').trim())
-          return '"' + mask.name + '" marked in ' + mask.color + (instruction ? ' — ' + instruction : '')
-        })
-        return 'The last attached image is a colour map of the areas to change: ' + parts.join('; ') +
-          '. Change only the marked areas, keep everything else untouched.'
       }
 
       async function openMaskEditor(editId) {
         const ref = primaryRef()
         if (!ref) return log('add a reference first — the mask is painted over it')
         const image = await loadImage('data:image/png;base64,' + ref.base64)
-        const canvas = $('maskCanvas')
-        // maska rośnie razem z oknem — duży podgląd to cały sens powiększania panelu
-        const maxW = Math.max(220, Math.min(760, ($('maskEditor').clientWidth || 328) - 2))
-        const maxH = Math.max(160, Math.min(560, window.innerHeight * 0.42))
-        const scale = Math.min(maxW / (ref.width || image.naturalWidth), maxH / (ref.height || image.naturalHeight), 1)
-        canvas.width = Math.max(32, Math.round((ref.width || image.naturalWidth) * scale))
-        canvas.height = Math.max(32, Math.round((ref.height || image.naturalHeight) * scale))
-        const overlay = document.createElement('canvas')
-        overlay.width = canvas.width
-        overlay.height = canvas.height
+        const naturalWidth = Math.round(ref.width || image.naturalWidth)
+        const naturalHeight = Math.round(ref.height || image.naturalHeight)
+
+        // maska: pełna rozdzielczość obrazu, zero skalowania przy zapisie
+        const maskCanvas = document.createElement('canvas')
+        maskCanvas.width = naturalWidth
+        maskCanvas.height = naturalHeight
+
         const editing = state.masks.find((mask) => mask.id === editId)
-        state.maskBase = { image, canvas, overlay, color: editing ? editing.color : nextMaskColor() }
+        state.maskBase = {
+          image,
+          canvas: $('maskCanvas'),
+          maskCanvas,
+          naturalWidth,
+          naturalHeight,
+          color: editing ? editing.color : nextMaskColor(),
+        }
         state.maskEditingId = editId || null
         state.maskErase = false
         $('maskErase').classList.remove('on')
         $('maskEditor').classList.remove('hidden')
-        redrawMask()
+        sizeMaskView()
         if (editing) seedOverlayFromMask(editing)
-        log(editing ? 'editing ' + editing.name : 'new mask — paint the area to change')
+        log(editing
+          ? 'editing ' + editing.name + ' · mask at ' + naturalWidth + '×' + naturalHeight
+          : 'new mask · ' + naturalWidth + '×' + naturalHeight + ' — paint the area to change')
+      }
+
+      // Podgląd dostosowuje się do okna (także w trakcie malowania) — pędzel zostaje
+      // w pikselach obrazu, więc powiększenie panelu niczego nie rozmywa.
+      function sizeMaskView() {
+        const base = state.maskBase
+        if (!base) return
+        const canvas = base.canvas
+        const editorWidth = Math.max(220, ($('maskEditor').clientWidth || 328))
+        const maxHeight = Math.max(180, Math.min(720, window.innerHeight * 0.55))
+        let viewWidth = editorWidth
+        let viewHeight = Math.round((viewWidth * base.naturalHeight) / base.naturalWidth)
+        if (viewHeight > maxHeight) {
+          viewHeight = Math.round(maxHeight)
+          viewWidth = Math.round((viewHeight * base.naturalWidth) / base.naturalHeight)
+        }
+        const dpr = Math.min(2, window.devicePixelRatio || 1)
+        canvas.style.width = viewWidth + 'px'
+        canvas.style.height = viewHeight + 'px'
+        canvas.width = Math.round(viewWidth * dpr)
+        canvas.height = Math.round(viewHeight * dpr)
+        redrawMask()
       }
 
       function redrawMask() {
@@ -735,7 +711,7 @@
         ctx.clearRect(0, 0, base.canvas.width, base.canvas.height)
         ctx.drawImage(base.image, 0, 0, base.canvas.width, base.canvas.height)
         ctx.globalAlpha = 0.55
-        ctx.drawImage(base.overlay, 0, 0)
+        ctx.drawImage(base.maskCanvas, 0, 0, base.canvas.width, base.canvas.height)
         ctx.globalAlpha = 1
       }
 
@@ -743,14 +719,16 @@
         const base = state.maskBase
         if (!base) return
         const rect = base.canvas.getBoundingClientRect()
-        const x = ((event.clientX - rect.left) / rect.width) * base.canvas.width
-        const y = ((event.clientY - rect.top) / rect.height) * base.canvas.height
-        const radius = (Number($('brushSize').value) / 2) * (base.canvas.width / rect.width)
-        const ctx = base.overlay.getContext('2d')
+        const nx = (event.clientX - rect.left) / rect.width
+        const ny = (event.clientY - rect.top) / rect.height
+        // pędzel jest podany w pikselach ekranu, a rysujemy w pikselach obrazu
+        const scale = base.naturalWidth / rect.width
+        const radius = Math.max(1, (Number($('brushSize').value) / 2) * scale)
+        const ctx = base.maskCanvas.getContext('2d')
         ctx.globalCompositeOperation = state.maskErase ? 'destination-out' : 'source-over'
         ctx.fillStyle = base.color || '#ff00ff'
         ctx.beginPath()
-        ctx.arc(x, y, Math.max(1, radius), 0, Math.PI * 2)
+        ctx.arc(nx * base.maskCanvas.width, ny * base.maskCanvas.height, radius, 0, Math.PI * 2)
         ctx.fill()
         redrawMask()
       }
@@ -763,37 +741,29 @@
 
       function saveMask() {
         const base = state.maskBase
-        const ref = primaryRef()
-        if (!base || !ref) return
-        const source = base.overlay
-        const pixels = source.getContext('2d').getImageData(0, 0, source.width, source.height).data
-        // biały/czarny w rozmiarze podglądu…
-        const binary = document.createElement('canvas')
-        binary.width = source.width
-        binary.height = source.height
-        const bctx = binary.getContext('2d')
-        const out = bctx.createImageData(binary.width, binary.height)
+        if (!base) return
+        const width = base.maskCanvas.width
+        const height = base.maskCanvas.height
+        const pixels = base.maskCanvas.getContext('2d').getImageData(0, 0, width, height).data
+        const out = document.createElement('canvas')
+        out.width = width
+        out.height = height
+        const octx = out.getContext('2d')
+        const image = octx.createImageData(width, height)
         let painted = 0
         for (let i = 0; i < pixels.length; i += 4) {
           const on = pixels[i + 3] > 40
           if (on) painted += 1
-          out.data[i] = out.data[i + 1] = out.data[i + 2] = on ? 255 : 0
-          out.data[i + 3] = 255
+          image.data[i] = image.data[i + 1] = image.data[i + 2] = on ? 255 : 0
+          image.data[i + 3] = 255
         }
         if (painted === 0) return log('mask is empty — paint the area to change')
-        bctx.putImageData(out, 0, 0)
-        // …i przeskalowany do wymiarów referencji, bo fal porównuje maskę z obrazem
-        const full = document.createElement('canvas')
-        full.width = Math.round(ref.width || binary.width)
-        full.height = Math.round(ref.height || binary.height)
-        const fctx = full.getContext('2d')
-        fctx.imageSmoothingEnabled = false
-        fctx.drawImage(binary, 0, 0, full.width, full.height)
+        octx.putImageData(image, 0, 0)
         const editId = state.maskEditingId
-        const mask = addMask(full.toDataURL('image/png').split(',')[1], full.width, full.height, editId)
+        const mask = addMask(out.toDataURL('image/png').split(',')[1], width, height, editId)
         closeMaskEditor()
-        log((editId ? 'updated ' + mask.name : 'added ' + mask.name) + ' · ' +
-          Math.round((painted / (binary.width * binary.height)) * 100) + '% of the area will change')
+        log((editId ? 'updated ' + mask.name : 'added ' + mask.name) + ' at ' + width + '×' + height + ' · ' +
+          Math.round((painted / (width * height)) * 100) + '% of the area will change')
       }
 
       // alternatywa: frame pomalowany na biało/czarno jako maska
@@ -1265,6 +1235,13 @@
         height: Math.min(MAX_SIZE.height, Math.max(MIN_SIZE.height, Math.round(size.height))),
       })
 
+      let maskResizeTimer = 0
+      window.addEventListener('resize', () => {
+        if (!state.maskBase) return
+        clearTimeout(maskResizeTimer)
+        maskResizeTimer = setTimeout(() => sizeMaskView(), 120)
+      })
+
       for (const grip of document.querySelectorAll('.grip')) {
         const corner = grip.dataset.corner
         const signX = corner === 'tr' || corner === 'br' ? 1 : -1
@@ -1328,8 +1305,8 @@
       }
       $('maskClear').onclick = () => {
         if (!state.maskBase) return
-        const ctx = state.maskBase.overlay.getContext('2d')
-        ctx.clearRect(0, 0, state.maskBase.overlay.width, state.maskBase.overlay.height)
+        const ctx = state.maskBase.maskCanvas.getContext('2d')
+        ctx.clearRect(0, 0, state.maskBase.maskCanvas.width, state.maskBase.maskCanvas.height)
         redrawMask()
       }
       $('maskSave').onclick = () => saveMask()
