@@ -1,7 +1,7 @@
 ---
 name: figma-bridge
-description: "Drive a Figma file through the local Figma Bridge — read the selection, build frames, text and shapes, bind variables, place images, export PNG/SVG. Use when a task requires touching a Figma canvas (inspect a design, implement UI in Figma, swap colors to tokens, export an asset, insert generated artwork). Requires the bridge server on localhost:3847 and the Figma Bridge plugin running in the target file; if unavailable, do not improvise — ask the user to start them."
-whenToUse: "The user points at a Figma file, asks to build or edit something in Figma, asks what is on the canvas, or wants generated artwork placed there."
+description: "Drive a Figma file through the local Figma Bridge — read the selection, build frames, text and shapes, bind variables, place images, generate real SVG vectors with QuiverAI, generate or edit raster images with fal, export PNG/SVG. Use when a task requires touching a Figma canvas (inspect a design, implement UI in Figma, swap colors to tokens, export an asset, insert generated artwork, make an icon, logo or illustration as editable vector paths). Requires the bridge server on localhost:3847 and the Figma Bridge plugin running in the target file; if unavailable, do not improvise — ask the user to start them."
+whenToUse: "The user points at a Figma file, asks to build or edit something in Figma, asks what is on the canvas, wants an icon, logo or vector artwork (SVG, QuiverAI), or wants generated or edited artwork placed there."
 ---
 
 # Figma Bridge

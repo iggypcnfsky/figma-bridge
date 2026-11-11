@@ -34,6 +34,11 @@ Rules you do not break:
 5. `exec` is a last resort (it bypasses parameter validation).
 6. Do not delete or move someone else's layers without consent. Clean up after your tests.
 
+Artwork: raster images come from the sibling `img-forge` CLI (`img gen`, `img edit`), vectors come
+from QuiverAI — `figma svg gen "prompt" --ref a.png --insert` or `figma svg trace logo.png --insert`,
+which place real editable paths through the `createFromSvg` operation (any SVG you already have can be
+placed the same way).
+
 Operation format: `{"op":"name", ...parameters}`. HTTP contract, error codes and the full operation
 list: `AGENTS.md` + `docs/ops-reference.md`.
 
