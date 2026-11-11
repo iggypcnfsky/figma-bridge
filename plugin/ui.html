@@ -471,7 +471,10 @@
       }
 
       // ---------------------------------------------------------------- model
-      async function loadModels() {
+      // Registry można zmienić w models.json i panel ma to zobaczyć bez re-runu pluginu,
+      // więc odświeżamy listę przy każdym rozwinięciu — zachowując wybór, jeśli model nadal istnieje.
+      async function loadModels({ preserve = false } = {}) {
+        const previous = $('model').value
         try {
           const data = await api('/image/models')
           state.models = data.models || {}
@@ -483,9 +486,11 @@
             option.textContent = entry.label || id
             select.appendChild(option)
           }
-          const wanted = state.mode === 'edit' ? data.editDefault : data.default
+          const fallback = state.mode === 'edit' ? data.editDefault : data.default
+          const wanted = preserve && state.models[previous] ? previous : fallback
           if (wanted) select.value = wanted
-          await loadSchema()
+          // schema to osobne (wolniejsze) zapytanie — tylko gdy model faktycznie się zmienił
+          if (!state.schema || select.value !== previous) await loadSchema()
         } catch (err) {
           log(err.message)
         }
@@ -1762,7 +1767,7 @@
         for (const grip of document.querySelectorAll('.grip')) grip.classList.toggle('hidden', !state.expanded)
         toPlugin({ type: 'resize', width: size.width, height: size.height })
         if (state.expanded) {
-          if (!Object.keys(state.models).length) loadModels()
+          loadModels({ preserve: true })
           loadPresets()
           toPlugin({ type: 'selectionInfo' })
           refreshAgents()
