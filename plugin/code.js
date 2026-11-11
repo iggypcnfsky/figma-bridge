@@ -324,6 +324,52 @@ const OPS = {
     return { count: hits.length, hits }
   },
 
+  /**
+   * Czyta układ rodzica „po ludzku": grupuje dzieci w rzędy, sortuje w czytaniu i mierzy odstępy.
+   * Służy do zachowania istniejących grupień, nie do ich przerabiania.
+   */
+  async structure({ nodeId, tolerance = 24 } = {}) {
+    const node = await getNode(nodeId)
+    const kids = (node.children || [])
+      .filter((child) => 'x' in child && 'y' in child)
+      .map((child) => ({
+        id: child.id,
+        name: child.name,
+        type: child.type,
+        x: round(child.x),
+        y: round(child.y),
+        width: round(child.width),
+        height: round(child.height),
+        centerY: child.y + child.height / 2,
+      }))
+    if (kids.length === 0) return { id: node.id, name: node.name, rows: [] }
+
+    const rows = []
+    for (const kid of [...kids].sort((a, b) => a.centerY - b.centerY)) {
+      const row = rows.find((candidate) => Math.abs(candidate.centerY - kid.centerY) <= Math.max(Number(tolerance), kid.height / 2))
+      if (row) {
+        row.items.push(kid)
+        row.centerY = row.items.reduce((sum, item) => sum + item.centerY, 0) / row.items.length
+      } else {
+        rows.push({ centerY: kid.centerY, items: [kid] })
+      }
+    }
+
+    const described = rows.map((row) => {
+      const items = row.items.sort((a, b) => a.x - b.x)
+      const gaps = items.slice(1).map((item, index) => round(item.x - (items[index].x + items[index].width)))
+      return {
+        y: round(Math.min(...items.map((item) => item.y))),
+        height: round(Math.max(...items.map((item) => item.y + item.height)) - Math.min(...items.map((item) => item.y))),
+        count: items.length,
+        gaps,
+        items: items.map((item) => ({ id: item.id, name: item.name, type: item.type, x: item.x, y: item.y, width: item.width, height: item.height })),
+      }
+    })
+
+    return { id: node.id, name: node.name, rows: described, readingOrder: described.flatMap((row) => row.items.map((item) => item.id)) }
+  },
+
   /** Przegląd klatek na stronie: geometria + statystyka typografii. Jedno wywołanie zamiast chodzenia po drzewie. */
   async inventory({ nodeId, limit = 200 } = {}) {
     const root = nodeId ? await getNode(nodeId) : figma.currentPage

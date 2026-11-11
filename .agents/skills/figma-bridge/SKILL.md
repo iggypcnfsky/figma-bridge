@@ -109,8 +109,8 @@ A draft that "isn't finished" still encodes decisions: what sits beside what, wh
 of elements, the spacing rhythm. Read it before designing, then keep it.
 
 1. `{"op":"inventory"}` — the frames, their sizes and typography stats.
-2. `{"op":"node","nodeId":"<frame>","depth":2}` — children **in order**, with positions: that is the
-   grouping and the reading order the author chose.
+2. `{"op":"structure","nodeId":"<frame>"}` — children grouped into rows with gaps and a `readingOrder`;
+   that is the grouping the author chose. `{"op":"node",…,"depth":2}` gives the same tree with more depth.
 3. Note the pattern (a left margin that repeats, a title that always sits above three columns) and keep
    it. Change what the request needs, leave the rest where it is.
 4. Report the deviations you did make — "moved the footer up by 40", not just "improved the layout".

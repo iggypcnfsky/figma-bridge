@@ -29,6 +29,26 @@ manifest lacks the `currentuser` permission.
 
 No parameters. Returns an array of `{ id, name, type }` for every page.
 
+## structure
+
+Reads a frame the way a human does: children grouped into rows, sorted in reading order, with the gaps
+between them. Use it to respect an existing arrangement instead of re-flowing it.
+
+| parameter | default | meaning |
+|---|---|---|
+| `nodeId` | — (required) | frame, group or section |
+| `tolerance` | `24` | vertical distance under which two items count as one row |
+
+Returns `{ rows: [{ y, height, count, gaps, items: [{ id, name, type, x, y, width, height }] }],
+readingOrder: [id…] }`.
+
+```bash
+./bin/figma op '{"op":"structure","nodeId":"12:34"}'
+```
+
+Reading it: `rows` are the author's bands, `gaps` reveal the spacing rhythm (it is rarely uniform — the
+irregular one is usually intentional), and `readingOrder` is the sequence to preserve.
+
 ## inventory
 
 One call instead of walking the tree: every frame on the current page (or inside `nodeId`) with its
