@@ -88,6 +88,8 @@
       .mask { display: grid; grid-template-columns: 34px 1fr auto; gap: 3px 6px; align-items: center;
         border: 1px solid var(--figma-color-border, #ddd); border-radius: 5px; padding: 4px; }
       .mask img { width: 34px; height: 34px; object-fit: contain; background: #000; border-radius: 3px; cursor: pointer; }
+      .mask .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; vertical-align: -1px; }
+      .mask .nameRow { display: flex; align-items: center; gap: 4px; }
       .mask .maskname { font-size: 10px; padding: 2px 4px; }
       .mask .maskinstr { grid-column: 1 / -1; font-size: 10px; padding: 3px 5px; }
       .mask button { padding: 0 4px; border-color: transparent; background: transparent; }
@@ -157,6 +159,9 @@
           <span id="maskInfo">no masks</span>
         </div>
         <div id="maskList"></div>
+        <label class="check" id="combineRow">
+          <input type="checkbox" id="combineMasks" /> combine masks into one call (cheaper, less exact)
+        </label>
         <div id="maskEditor" class="hidden">
           <div class="row">
             <input id="brushSize" type="range" min="4" max="120" value="32" />
@@ -523,8 +528,28 @@
         image.src = src
       })
 
+      // Kolory są dla Ciebie, nie dla modelu: fal dostaje wyłącznie biel/czerń.
+      // W trybie „combine” kolor staje się jednak czytelny — panel dokłada obrazek-kolorowankę,
+      // a model dostaje legendę, więc wie, że czerwony obszar to ściana, a zielony to okno.
+      const MASK_COLORS = ['#ff00ff', '#00b3ff', '#ffb800', '#00d68f', '#ff5c5c', '#9b5cff']
+
+      function hexToRgb(hex) {
+        const raw = String(hex || '#ff00ff').replace('#', '')
+        const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw
+        return {
+          r: parseInt(full.slice(0, 2), 16) || 0,
+          g: parseInt(full.slice(2, 4), 16) || 0,
+          b: parseInt(full.slice(4, 6), 16) || 0,
+        }
+      }
+
       function nextMaskName() {
         return 'mask ' + (state.masks.length + 1)
+      }
+
+      function nextMaskColor() {
+        const used = new Set(state.masks.map((mask) => mask.color))
+        return MASK_COLORS.find((color) => !used.has(color)) || MASK_COLORS[state.masks.length % MASK_COLORS.length]
       }
 
       function renderMasks() {
@@ -539,11 +564,17 @@
           thumb.title = 'click to paint over this mask'
           thumb.onclick = () => openMaskEditor(mask.id).catch((err) => log('mask: ' + err.message))
 
+          const nameWrap = document.createElement('div')
+          nameWrap.className = 'nameRow'
+          const dot = document.createElement('span')
+          dot.className = 'dot'
+          dot.style.background = mask.color
           const name = document.createElement('input')
           name.className = 'maskname'
           name.value = mask.name
           name.title = 'mask name'
           name.onchange = () => { mask.name = name.value.trim() || nextMaskName() }
+          nameWrap.append(dot, name)
 
           const remove = document.createElement('button')
           remove.textContent = '✕'
@@ -561,7 +592,7 @@
           instruction.oninput = () => { mask.instruction = instruction.value }
           instruction.onchange = () => updateCost()
 
-          row.append(thumb, name, remove)
+          row.append(thumb, nameWrap, remove)
           row.append(instruction)
           list.append(row)
         }
@@ -582,7 +613,7 @@
             return existing
           }
         }
-        const mask = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: nextMaskName(), base64, width, height, instruction: '' }
+        const mask = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: nextMaskName(), color: nextMaskColor(), base64, width, height, instruction: '' }
         state.masks.push(mask)
         renderMasks()
         updateCost()
@@ -601,11 +632,12 @@
           sctx.drawImage(image, 0, 0, scratch.width, scratch.height)
           const pixels = sctx.getImageData(0, 0, scratch.width, scratch.height).data
           const out = sctx.createImageData(scratch.width, scratch.height)
+          const rgb = hexToRgb(base.color || '#ff00ff')
           for (let i = 0; i < pixels.length; i += 4) {
             if (pixels[i] > 128) {
-              out.data[i] = 255
-              out.data[i + 1] = 0
-              out.data[i + 2] = 255
+              out.data[i] = rgb.r
+              out.data[i + 1] = rgb.g
+              out.data[i + 2] = rgb.b
               out.data[i + 3] = 255
             }
           }
@@ -613,6 +645,62 @@
           redrawMask()
         }
         image.src = 'data:image/png;base64,' + mask.base64
+      }
+
+      async function combineMasks(masks, ref) {
+        const width = Math.round(ref.width || 1024)
+        const height = Math.round(ref.height || 1024)
+        const baseImage = await loadImage('data:image/png;base64,' + ref.base64)
+
+        const union = document.createElement('canvas')
+        union.width = width
+        union.height = height
+        const uctx = union.getContext('2d')
+        uctx.fillStyle = '#000'
+        uctx.fillRect(0, 0, width, height)
+
+        const colorMap = document.createElement('canvas')
+        colorMap.width = width
+        colorMap.height = height
+        const cctx = colorMap.getContext('2d')
+        cctx.drawImage(baseImage, 0, 0, width, height)
+
+        for (const mask of masks) {
+          const image = await loadImage('data:image/png;base64,' + mask.base64)
+          uctx.drawImage(image, 0, 0, width, height) // biel wygrywa, więc OR wychodzi sam
+          const tint = document.createElement('canvas')
+          tint.width = width
+          tint.height = height
+          const tctx = tint.getContext('2d')
+          tctx.drawImage(image, 0, 0, width, height)
+          const pixels = tctx.getImageData(0, 0, width, height)
+          const rgb = hexToRgb(mask.color)
+          for (let i = 0; i < pixels.data.length; i += 4) {
+            const on = pixels.data[i] > 128
+            pixels.data[i] = rgb.r
+            pixels.data[i + 1] = rgb.g
+            pixels.data[i + 2] = rgb.b
+            pixels.data[i + 3] = on ? 255 : 0
+          }
+          tctx.putImageData(pixels, 0, 0)
+          cctx.globalAlpha = 0.75
+          cctx.drawImage(tint, 0, 0)
+          cctx.globalAlpha = 1
+        }
+
+        return {
+          mask: { filename: 'mask-union.png', base64: union.toDataURL('image/png').split(',')[1], width, height },
+          colorMap: { filename: 'color-map.png', base64: colorMap.toDataURL('image/png').split(',')[1] },
+        }
+      }
+
+      function legendFor(masks) {
+        const parts = masks.map((mask) => {
+          const instruction = expandRefs((mask.instruction || '').trim())
+          return '"' + mask.name + '" marked in ' + mask.color + (instruction ? ' — ' + instruction : '')
+        })
+        return 'The last attached image is a colour map of the areas to change: ' + parts.join('; ') +
+          '. Change only the marked areas, keep everything else untouched.'
       }
 
       async function openMaskEditor(editId) {
@@ -629,13 +717,13 @@
         const overlay = document.createElement('canvas')
         overlay.width = canvas.width
         overlay.height = canvas.height
-        state.maskBase = { image, canvas, overlay }
+        const editing = state.masks.find((mask) => mask.id === editId)
+        state.maskBase = { image, canvas, overlay, color: editing ? editing.color : nextMaskColor() }
         state.maskEditingId = editId || null
         state.maskErase = false
         $('maskErase').classList.remove('on')
         $('maskEditor').classList.remove('hidden')
         redrawMask()
-        const editing = state.masks.find((mask) => mask.id === editId)
         if (editing) seedOverlayFromMask(editing)
         log(editing ? 'editing ' + editing.name : 'new mask — paint the area to change')
       }
@@ -660,7 +748,7 @@
         const radius = (Number($('brushSize').value) / 2) * (base.canvas.width / rect.width)
         const ctx = base.overlay.getContext('2d')
         ctx.globalCompositeOperation = state.maskErase ? 'destination-out' : 'source-over'
-        ctx.fillStyle = '#ff00ff'
+        ctx.fillStyle = base.color || '#ff00ff'
         ctx.beginPath()
         ctx.arc(x, y, Math.max(1, radius), 0, Math.PI * 2)
         ctx.fill()
@@ -813,16 +901,21 @@
         if (!base) return ($('cost').textContent = '')
         const dims = dimsFromPreset(state.preset)
         const tokens = (base * dims.width * dims.height) / (1024 * 1024)
-        const refs = state.mode === 'edit' ? state.refs.length * (pricing.referenceTokensPerImage || 0) : 0
+        const maskCount = state.mode === 'edit' ? state.masks.filter((mask) => mask.base64).length : 0
+        const combined = maskCount > 1 && Boolean($('combineMasks') && $('combineMasks').checked)
+        // tryb combine dokłada obrazek-kolorowankę jako referencję
+        const refCount = (state.mode === 'edit' ? state.refs.length : 0) + (combined ? 1 : 0)
+        const refs = refCount * (pricing.referenceTokensPerImage || 0)
         const promptTokens = Math.max(1, Math.ceil(($('prompt').value || '').length / 4))
         const cost =
           (tokens * pricing.imageOutputTokensPerM) / 1e6 +
           ((promptTokens + refs) * pricing.textInputTokensPerM) / 1e6
-        const maskCount = state.mode === 'edit' ? state.masks.filter((mask) => mask.base64).length : 0
+        const passes = combined ? 1 : Math.max(1, maskCount)
         const rounded = Math.ceil(cost * 10000) / 10000
         $('cost').textContent =
           '≈ $' + rounded.toFixed(4) +
-          (maskCount > 1 ? ' × ' + maskCount + ' masks = $' + (Math.ceil(cost * maskCount * 10000) / 10000).toFixed(4) : '') +
+          (passes > 1 ? ' × ' + passes + ' passes = $' + (Math.ceil(cost * passes * 10000) / 10000).toFixed(4) : '') +
+          (combined ? ' · combined' : '') +
           ' · ' + dims.width + '×' + dims.height + ' · ' + quality
       }
 
@@ -1019,23 +1112,33 @@
         // Jedna maska = jedno zlecenie. Kilka masek = kilka przejść pod rząd: wynik poprzedniego
         // przejścia jest obrazem wejściowym następnego, więc każda instrukcja widzi już swoją zmianę.
         const masks = state.mode === 'edit' ? state.masks.filter((mask) => mask.base64) : []
-        const passes = masks.length === 0
-          ? [{ mask: null, prompt }]
-          : masks.map((mask) => ({ mask, prompt: (mask.instruction || '').trim() || prompt }))
+        const combine = Boolean($('combineMasks').checked) && masks.length > 1
 
         state.busy = true
         $('go').disabled = true
         $('result').classList.add('hidden')
-        log(passes.length > 1 ? passes.length + ' masks → ' + passes.length + ' passes' : 'queued')
         try {
           const dims = dimsFromPreset(state.preset)
+          let extraRefs = state.refs.slice(1)
+          let passes
+          if (combine) {
+            const combo = await combineMasks(masks, primaryRef())
+            extraRefs = [...extraRefs, combo.colorMap]
+            passes = [{ mask: combo.mask, prompt: prompt + '\n\n' + legendFor(masks) }]
+            log('combining ' + masks.length + ' masks into one call · colour map attached as the last reference')
+          } else {
+            passes = masks.length === 0
+              ? [{ mask: null, prompt }]
+              : masks.map((mask) => ({ mask, prompt: (mask.instruction || '').trim() || prompt }))
+            log(passes.length > 1 ? passes.length + ' masks → ' + passes.length + ' passes' : 'queued')
+          }
           let base = primaryRef()
           let last = null
           for (let index = 0; index < passes.length; index += 1) {
             const pass = passes[index]
-            const suffix = passes.length > 1 ? ' · ' + (index + 1) + '/' + passes.length + (pass.mask ? ' (' + pass.mask.name + ')' : '') : ''
+            const suffix = passes.length > 1 ? ' · ' + (index + 1) + '/' + passes.length + (pass.mask ? ' (' + pass.mask.name + ')' : '') : (combine ? ' · combined' : '')
             setStatus('generating' + suffix + '…', 'busy')
-            const refs = state.mode === 'edit' ? [base, ...state.refs.slice(1)] : []
+            const refs = state.mode === 'edit' ? [base, ...extraRefs] : []
             const payload = {
               mode: state.mode,
               model: $('model').value,
@@ -1212,6 +1315,7 @@
         }
       }
 
+      $('combineMasks').onchange = () => updateCost()
       $('paintMask').onclick = () => openMaskEditor().catch((err) => log('mask: ' + err.message))
       $('maskFromSel').onclick = () => {
         state.maskFromSelection = true

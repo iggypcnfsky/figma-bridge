@@ -92,6 +92,10 @@ Image generation (optional; needs a `FAL_KEY` and the sibling CLI,
   as the next input, each with that mask's own instruction. N masks ⇒ N calls, N × the estimate.
   Instructions may reference references as `#image1`, `#image2` … (the panel expands them to
   "reference image N (filename)" — the model needs words, the API only keeps order).
+- the panel's **combine masks** checkbox trades exactness for one call: it unions the masks into one
+  `mask_url` and appends a colour map of the reference tinted per mask as the last image, with a
+  legend in the prompt. Colours are a message to the model, never part of the mask itself — fal only
+  reads white (change) and black (keep).
 - no token; requests carrying a foreign `Origin` get 403, and each job is capped by `--max-usd`
 - a job spawns `img-forge` and returns `{status, log, result:{file, base64, width, height}}`
 - if you can run the CLI directly, do that instead — the endpoint exists for the Figma panel,

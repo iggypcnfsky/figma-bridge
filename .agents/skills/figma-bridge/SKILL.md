@@ -96,6 +96,9 @@ Design-work shortcuts worth knowing:
   passes, each on the previous result and with its own instruction; N masks cost N calls.
   References are numbered (`#image1`, `#image2` — badges sit on the thumbnails) and the panel expands
   those into "reference image N (filename)" before sending.
+- **combine masks** = one call instead of N: union white mask + a colour-tinted copy of the reference
+  as the last image + a legend naming each colour. Colours never enter `mask_url` (fal reads only
+  white/black), they are how the prompt points at regions.
 - **styles**: `saveStyle` creates or updates a `text` / `paint` / `effect` / `grid` style by name, and
   `applyStyle` applies it. Create the token once, apply it everywhere.
 - **changing type on existing text** is the `text` op — not `exec`, and not loose assignments:
