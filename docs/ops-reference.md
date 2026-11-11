@@ -382,7 +382,7 @@ with Figma's message instead of half-applying.
 |---|---|
 | `nodeId` | node |
 | `styleName` | exact name, or a suffix after `/` (`text/heading/xl` matches `heading/xl`) |
-| `kind` | `text` (default) or `paint` |
+| `kind` | `text` (default), `paint`, or `grid` (applies a saved `saveStyle` grid style) |
 
 Uses `setTextStyleIdAsync` / `setFillStyleIdAsync`, so it works under `dynamic-page`.
 

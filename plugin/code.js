@@ -1029,6 +1029,16 @@ const OPS = {
       else node.textStyleId = style.id
       return { id: node.id, style: { id: style.id, name: style.name } }
     }
+    if (kind === 'grid') {
+      const grids = await (typeof figma.getLocalGridStylesAsync === 'function' ? figma.getLocalGridStylesAsync() : figma.getLocalGridStyles())
+      const style = pick(grids)
+      if (!style) fail('grid style not found: ' + styleName)
+      if (!('gridStyleId' in node)) fail(node.type + ' cannot take a grid style')
+      if (typeof node.setGridStyleIdAsync === 'function') await node.setGridStyleIdAsync(style.id)
+      else node.gridStyleId = style.id
+      return { id: node.id, style: { id: style.id, name: style.name } }
+    }
+
     const style = pick(await paintStyles())
     if (!style) fail('paint style not found: ' + styleName)
     if (typeof node.setFillStyleIdAsync === 'function') await node.setFillStyleIdAsync(style.id)
