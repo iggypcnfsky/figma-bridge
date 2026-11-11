@@ -47,8 +47,19 @@ cd <repo>/figma-bridge
 ```
 
 Ops: `ping status pages variables styles fonts` · `selection node find` · `createFrame createRect
-createEllipse createText createPage` · `update clone reparent remove goto` · `varFill` ·
-`export imageFill` · `exec`. Full parameters: `docs/ops-reference.md`.
+createEllipse createText createPage createInstance` · `update clone reparent remove goto group ungroup
+select` · `grids setGrids align distribute effects` · `applyStyle varFill` · `export imageFill` · `exec`.
+Full parameters: `docs/ops-reference.md`.
+
+Design-work shortcuts worth knowing:
+
+- **grid**: `{"op":"setGrids","nodeId":"…","columns":{"count":12,"gutter":24,"margin":64}}` — do not
+  fake a grid with rectangles.
+- **rows of items**: build them, then `{"op":"align","nodeIds":[…],"mode":"TOP"}` and
+  `{"op":"distribute","nodeIds":[…],"axis":"HORIZONTAL","gap":24}`.
+- **depth**: `{"op":"effects","nodeId":"…","shadow":{"y":8,"blur":24,"color":"#00000033"}}`.
+- **design system**: `createInstance` with a `COMPONENT` id, and `applyStyle` by style name; do not
+  redraw what the library already ships.
 
 ## Images
 

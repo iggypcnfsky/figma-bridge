@@ -47,6 +47,11 @@ function paint(hex) {
     : { type: 'SOLID', color: { r, g, b }, opacity: a }
 }
 
+function rgba(hex) {
+  const { r, g, b, a } = parseHex(hex)
+  return { r, g, b, a: a === undefined ? 1 : a }
+}
+
 function hexOf(color) {
   const h = (v) => Math.round(v * 255).toString(16).padStart(2, '0')
   return '#' + h(color.r) + h(color.g) + h(color.b)
@@ -524,6 +529,176 @@ const OPS = {
       text: texts.slice(0, limit).map((s) => ({ id: s.id, name: s.name })),
       counts: { paint: paints.length, text: texts.length },
     }
+  },
+
+  async grids({ nodeId } = {}) {
+    const node = await getNode(nodeId)
+    if (!('layoutGrids' in node)) fail(node.type + ' has no layout grids')
+    return { id: node.id, layoutGrids: node.layoutGrids }
+  },
+
+  async setGrids({ nodeId, columns, rows, grid, visible = true, clear = false } = {}) {
+    const node = await getNode(nodeId)
+    if (!('layoutGrids' in node)) fail(node.type + ' has no layout grids')
+    if (clear || (!columns && !rows && !grid)) {
+      node.layoutGrids = []
+      return { id: node.id, layoutGrids: [] }
+    }
+    const next = []
+    if (columns) {
+      next.push({
+        pattern: 'COLUMNS',
+        visible: visible !== false,
+        color: rgba(columns.color || '#FF000014'),
+        alignment: columns.alignment || 'STRETCH',
+        count: Number(columns.count === undefined ? 12 : columns.count),
+        gutterSize: Number(columns.gutter === undefined ? 24 : columns.gutter),
+        offset: Number(columns.margin === undefined ? 0 : columns.margin),
+        sectionSize: Number(columns.sectionSize === undefined ? 0 : columns.sectionSize),
+      })
+    }
+    if (rows) {
+      next.push({
+        pattern: 'ROWS',
+        visible: visible !== false,
+        color: rgba(rows.color || '#FF000014'),
+        alignment: rows.alignment || 'STRETCH',
+        count: Number(rows.count === undefined ? 3 : rows.count),
+        gutterSize: Number(rows.gutter === undefined ? 24 : rows.gutter),
+        offset: Number(rows.margin === undefined ? 0 : rows.margin),
+        sectionSize: Number(rows.sectionSize === undefined ? 0 : rows.sectionSize),
+      })
+    }
+    if (grid) {
+      next.push({
+        pattern: 'GRID',
+        visible: visible !== false,
+        color: rgba(grid.color || '#FF000014'),
+        sectionSize: Number(grid.size === undefined ? 8 : grid.size),
+      })
+    }
+    node.layoutGrids = next
+    return { id: node.id, layoutGrids: node.layoutGrids }
+  },
+
+  /** Wyrównuje grupę węzłów do wspólnej krawędzi lub osi. */
+  async align({ nodeIds, mode = 'LEFT' } = {}) {
+    if (!Array.isArray(nodeIds) || nodeIds.length === 0) fail('nodeIds must be a non-empty array')
+    const nodes = await Promise.all(nodeIds.map((id) => getNode(id)))
+    const left = Math.min(...nodes.map((n) => n.x))
+    const right = Math.max(...nodes.map((n) => n.x + n.width))
+    const top = Math.min(...nodes.map((n) => n.y))
+    const bottom = Math.max(...nodes.map((n) => n.y + n.height))
+    for (const node of nodes) {
+      if (mode === 'LEFT') node.x = left
+      else if (mode === 'RIGHT') node.x = right - node.width
+      else if (mode === 'HCENTER') node.x = left + (right - left - node.width) / 2
+      else if (mode === 'TOP') node.y = top
+      else if (mode === 'BOTTOM') node.y = bottom - node.height
+      else if (mode === 'VCENTER') node.y = top + (bottom - top - node.height) / 2
+      else fail('mode must be LEFT | RIGHT | HCENTER | TOP | BOTTOM | VCENTER')
+    }
+    return { aligned: nodes.map((n) => ({ id: n.id, x: round(n.x), y: round(n.y) })) }
+  },
+
+  /** Rozstawia węzły po osi: równe odstępy między skrajnymi albo stały `gap`. */
+  async distribute({ nodeIds, axis = 'HORIZONTAL', gap } = {}) {
+    if (!Array.isArray(nodeIds) || nodeIds.length < 2) fail('nodeIds needs at least two ids')
+    const nodes = await Promise.all(nodeIds.map((id) => getNode(id)))
+    const horizontal = axis !== 'VERTICAL'
+    nodes.sort((a, b) => (horizontal ? a.x - b.x : a.y - b.y))
+    const first = nodes[0]
+    const last = nodes[nodes.length - 1]
+    const sizes = nodes.reduce((sum, n) => sum + (horizontal ? n.width : n.height), 0)
+    const span = horizontal ? last.x + last.width - first.x : last.y + last.height - first.y
+    const spacing = gap === undefined ? (span - sizes) / (nodes.length - 1) : Number(gap)
+    let cursor = horizontal ? first.x + first.width : first.y + first.height
+    for (const node of nodes.slice(1)) {
+      cursor += spacing
+      if (horizontal) node.x = round(cursor)
+      else node.y = round(cursor)
+      cursor += horizontal ? node.width : node.height
+    }
+    return { spacing: round(spacing), ordered: nodes.map((n) => n.id) }
+  },
+
+  async effects({ nodeId, effects, shadow, clear = false } = {}) {
+    const node = await getNode(nodeId)
+    if (!('effects' in node)) fail(node.type + ' has no effects')
+    if (clear) {
+      node.effects = []
+      return { id: node.id, effects: [] }
+    }
+    let next = effects
+    if (!next && shadow) {
+      next = [
+        {
+          type: 'DROP_SHADOW',
+          color: rgba(shadow.color || '#00000040'),
+          offset: { x: Number(shadow.x === undefined ? 0 : shadow.x), y: Number(shadow.y === undefined ? 4 : shadow.y) },
+          radius: Number(shadow.blur === undefined ? 12 : shadow.blur),
+          spread: Number(shadow.spread === undefined ? 0 : shadow.spread),
+          visible: true,
+          blendMode: 'NORMAL',
+        },
+      ]
+    }
+    if (!Array.isArray(next)) fail('pass effects[] or shadow{}')
+    node.effects = next
+    return { id: node.id, effects: node.effects }
+  },
+
+  async createInstance({ componentId, parentId, x, y } = {}) {
+    const component = await getNode(componentId)
+    if (component.type !== 'COMPONENT') fail('node is not a COMPONENT: ' + component.type)
+    const instance = component.createInstance()
+    if (x !== undefined) instance.x = Number(x)
+    if (y !== undefined) instance.y = Number(y)
+    await attach(instance, parentId)
+    return { id: instance.id, name: instance.name, type: instance.type }
+  },
+
+  /** Stosuje istniejący styl lokalny po nazwie (dokładnej albo po fragmencie). */
+  async applyStyle({ nodeId, styleName, kind = 'text' } = {}) {
+    if (!styleName) fail('missing styleName')
+    const node = await getNode(nodeId)
+    const pick = (list) => list.find((style) => style.name === styleName) || list.find((style) => style.name.endsWith('/' + styleName))
+    if (kind === 'text') {
+      const style = pick(await textStyles())
+      if (!style) fail('text style not found: ' + styleName)
+      if (typeof node.setTextStyleIdAsync === 'function') await node.setTextStyleIdAsync(style.id)
+      else node.textStyleId = style.id
+      return { id: node.id, style: { id: style.id, name: style.name } }
+    }
+    const style = pick(await paintStyles())
+    if (!style) fail('paint style not found: ' + styleName)
+    if (typeof node.setFillStyleIdAsync === 'function') await node.setFillStyleIdAsync(style.id)
+    else node.fillStyleId = style.id
+    return { id: node.id, style: { id: style.id, name: style.name } }
+  },
+
+  async group({ nodeIds, name } = {}) {
+    if (!Array.isArray(nodeIds) || nodeIds.length < 2) fail('grouping needs at least two nodes')
+    const nodes = await Promise.all(nodeIds.map((id) => getNode(id)))
+    const parent = nodes[0].parent
+    if (!parent) fail('cannot group nodes without a parent')
+    const group = figma.group(nodes, parent)
+    if (name) group.name = String(name)
+    return { id: group.id, name: group.name }
+  },
+
+  async ungroup({ nodeId } = {}) {
+    const node = await getNode(nodeId)
+    if (typeof node.ungroup !== 'function') fail(node.type + ' cannot be ungrouped')
+    const children = node.ungroup()
+    return { ids: children.map((child) => child.id) }
+  },
+
+  async select({ nodeIds, zoom = false } = {}) {
+    const nodes = await Promise.all((nodeIds || []).map((id) => getNode(id)))
+    figma.currentPage.selection = nodes
+    if (zoom) figma.viewport.scrollAndZoomIntoView(nodes)
+    return { count: nodes.length, ids: nodes.map((n) => n.id) }
   },
 
   async export({ nodeId, format = 'PNG', scale = 2 } = {}) {

@@ -191,6 +191,87 @@ Binds the variable through `setBoundVariableForPaint`. Returns `{ id, variable, 
 
 Returns `{ paint: [{id,name,type}], text: [{id,name}], counts: {paint,text} }`.
 
+## grids
+
+| parameter | meaning |
+|---|---|
+| `nodeId` | node with layout grids (frame, page, component) |
+
+Returns `{ id, layoutGrids }` exactly as Figma stores them.
+
+## setGrids
+
+| parameter | default | meaning |
+|---|---|---|
+| `nodeId` | — (required) | node |
+| `columns` | — | `{ count: 12, gutter: 24, margin: 0, alignment: 'STRETCH', color, sectionSize }` |
+| `rows` | — | same shape, default `count: 3` |
+| `grid` | — | `{ size: 8, color }` square grid |
+| `visible` | `true` | show the grid immediately |
+| `clear` | `false` | `true` removes every grid on the node |
+
+```bash
+./bin/figma op '{"op":"setGrids","nodeId":"12:34","columns":{"count":12,"gutter":24,"margin":64}}'
+./bin/figma op '{"op":"setGrids","nodeId":"12:34","grid":{"size":8}}'
+```
+
+Returns the applied `layoutGrids`. Sizes are snapped to Figma's own grid limits; an unsupported node
+type fails with its type name.
+
+## align
+
+| parameter | default | meaning |
+|---|---|---|
+| `nodeIds` | — (required) | two or more siblings |
+| `mode` | `LEFT` | `LEFT` `RIGHT` `HCENTER` `TOP` `BOTTOM` `VCENTER` |
+
+Aligns to the bounding box of the given nodes and returns their new `x`/`y`.
+
+## distribute
+
+| parameter | default | meaning |
+|---|---|---|
+| `nodeIds` | — (required) | at least two |
+| `axis` | `HORIZONTAL` | `HORIZONTAL` or `VERTICAL` |
+| `gap` | — | fixed gap; omit for equal spacing between the extremes |
+
+Returns `{ spacing, ordered }` with the nodes already moved. `gap` is the space **between edges**.
+
+## effects
+
+| parameter | meaning |
+|---|---|
+| `nodeId` | node |
+| `effects` | raw Figma effects array (`DROP_SHADOW`, `INNER_SHADOW`, `LAYER_BLUR`, `BACKGROUND_BLUR`) |
+| `shadow` | shortcut: `{ x: 0, y: 4, blur: 12, spread: 0, color: "#00000040" }` |
+| `clear` | `true` removes every effect |
+
+## createInstance
+
+| parameter | meaning |
+|---|---|
+| `componentId` | a node of type `COMPONENT` (find it with `find` + `type: "COMPONENT"`) |
+| `parentId`, `x`, `y` | where to place it |
+
+Returns `{ id, name, type }` of the instance — the correct way to build with an existing design system
+instead of drawing look-alikes.
+
+## applyStyle
+
+| parameter | meaning |
+|---|---|
+| `nodeId` | node |
+| `styleName` | exact name, or a suffix after `/` (`text/heading/xl` matches `heading/xl`) |
+| `kind` | `text` (default) or `paint` |
+
+Uses `setTextStyleIdAsync` / `setFillStyleIdAsync`, so it works under `dynamic-page`.
+
+## group / ungroup / select
+
+- `group { nodeIds, name? }` — groups siblings, returns the new node.
+- `ungroup { nodeId }` — dissolves a group or frame-group, returns the children ids.
+- `select { nodeIds, zoom? }` — sets the user's selection, optionally scrolls it into view.
+
 ## fonts
 
 Typography audit in one call — what agents otherwise rebuild as a fragile script.
