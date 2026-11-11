@@ -1,7 +1,7 @@
 ---
 name: figma-bridge
-description: Drive a Figma file through the local Figma Bridge — read the selection, build frames/text/shapes, bind variables, export PNG/SVG. Use when a task requires touching a Figma canvas (inspect a design, implement UI in Figma, swap colors to tokens, export an asset). Requires the bridge server on localhost:3847 and the Figma Bridge plugin running in the target file; if unavailable, do not improvise — ask the user to start them.
-whenToUse: The user points at a Figma file, asks to build or edit something in Figma, or asks what is on the canvas. Not for reading Figma links without the plugin running.
+description: "Drive a Figma file through the local Figma Bridge — read the selection, build frames, text and shapes, bind variables, place images, export PNG/SVG. Use when a task requires touching a Figma canvas (inspect a design, implement UI in Figma, swap colors to tokens, export an asset, insert generated artwork). Requires the bridge server on localhost:3847 and the Figma Bridge plugin running in the target file; if unavailable, do not improvise — ask the user to start them."
+whenToUse: "The user points at a Figma file, asks to build or edit something in Figma, asks what is on the canvas, or wants generated artwork placed there."
 ---
 
 # Figma Bridge
@@ -43,12 +43,30 @@ cd <repo>/figma-bridge
 ./bin/figma image 12:34 out/cover.png FILL      # local image file → fill (no cloud upload)
 ```
 
-Need artwork? Generate it with the sibling `img-forge` CLI, then place it:
-`img-forge gen --prompt "…" --preset 16:9@2k --out out/cover.png` → `./bin/figma image <nodeId> out/cover.png FILL`.
-
 Ops: `ping status pages variables styles` · `selection node find` · `createFrame createRect
 createEllipse createText createPage` · `update clone reparent remove goto` · `varFill` ·
 `export imageFill` · `exec`. Full parameters: `docs/ops-reference.md`.
+
+## Images
+
+Need artwork? Generate it with the sibling `img-forge` CLI, then place it — generation stays outside
+Figma so the API key never enters plugin code and a slow render cannot block the canvas:
+
+```bash
+cd ../img-forge
+./img gen --prompt "abstract gradient cover, purple to black" --preset 16:9@2k --out out/cover.png
+./img edit --prompt "make it night with neon accents" --ref out/cover.png   # or edit an existing asset
+cd ../figma-bridge
+./bin/figma image 12:34 ../img-forge/out/cover.png FILL
+```
+
+`FILL` crops to the node, `FIT` letterboxes, `TILE` repeats, `CROP` respects the existing crop.
+To edit what the user selected, export it first (`./bin/figma export <nodeId> out/sel.png PNG 2`) and
+pass that file as `--ref`.
+
+The plugin window also has a **Generate / Edit panel** for humans (model, size presets, cost, insert).
+Do not drive the panel programmatically — use the CLI; it exposes more (mask, variants, dry run).
+Presets saved in that panel live in `figma-bridge/presets.json`.
 
 ## Rules
 
@@ -69,8 +87,11 @@ createEllipse createText createPage` · `update clone reparent remove goto` · `
 - `figma.currentPage` is the page open in that Figma window — not a saved pointer. Switching tabs
   changes what you see on the next call.
 - Positions are relative to the parent, and an omitted `parentId` means the **current page**.
+- A rectangle cannot have children; use a frame when text or icons must sit inside a shape.
 - No local variables → `variables` returns `collections: []` and `varFill` fails. Check first.
 - Text needs a font: `createText` loads it via `loadFontAsync`; if the family is missing, use `Inter`.
 - `export` caps at 8 MB — lower `scale` instead of retrying.
+- Reading children of a non-current page needs `loadAllPagesAsync`; the bridge retries once
+  automatically, but prefer `find` with `allPages: true`.
 - After editing plugin files (`code.js`, `ui.html`) the user must re-run the plugin; changes to
   `manifest.json` need a re-import.
