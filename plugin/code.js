@@ -808,8 +808,19 @@ const OPS = {
     return { id: n.id, parent: p.id }
   },
 
-  async remove({ nodeId } = {}) {
+  async remove({ nodeId, confirm = false } = {}) {
     const n = await getNode(nodeId)
+    const structural = ['FRAME', 'SECTION', 'PAGE', 'COMPONENT', 'COMPONENT_SET']
+    // Agent, który dostaje „to jest źle”, potrafi skasować całą robotę i zacząć od zera.
+    // Usunięcie ramki niszczy wszystkie dzieci i nie da się tego cofnąć przez mostek,
+    // więc wymagamy świadomego confirm — a błąd tłumaczy, że poprawka to edycja, nie przebudowa.
+    if (structural.includes(n.type) && confirm !== true) {
+      const kids = Array.isArray(n.children) ? n.children.length : 0
+      fail('refusing to remove ' + n.type.toLowerCase() + ' "' + n.name + '" (' + kids +
+        ' child layer(s)) without confirm:true — this destroys everything inside and the bridge cannot undo it. ' +
+        'If the user reported a problem, edit that node in place instead; to make a new version, clone it and ' +
+        'place the copy beside the original. Pass confirm:true only when the user explicitly asked to delete it.')
+    }
     const id = n.id
     const name = n.name
     n.remove()

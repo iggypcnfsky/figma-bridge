@@ -56,7 +56,16 @@ function makeText(id, characters, font = { family: 'Poppins', style: 'Regular' }
 const title = makeText('1:10', 'The missing middle of the story')
 const mixedText = makeText('1:11', 'Bold lead in body copy')
 mixedText.fontName = mixed
-const nodes = new Map([[title.id, title], [mixedText.id, mixedText]])
+// ramka z dziećmi — do testu blokady kasowania całej pracy
+const frame = {
+  id: '1:20',
+  name: 'Slide 01',
+  type: 'FRAME',
+  children: [{ id: '1:21', type: 'TEXT', name: 'Title' }],
+  removed: false,
+  remove() { this.removed = true },
+}
+const nodes = new Map([[title.id, title], [mixedText.id, mixedText], [frame.id, frame]])
 
 const page = { id: '0:1', name: 'Slides', type: 'PAGE', children: [], selection: [] }
 
@@ -150,6 +159,13 @@ check('exec: dynamic-page error gets bridge advice', !r.ok && /use the `text` op
 // 10. a missing style fails with the list hint
 r = await run([{ op: 'text', nodeId: '1:10', textStyle: 'nope' }])
 check('text: unknown style names the fix', !r.ok && /style not found: nope/.test(r.error), r.error)
+
+// 11. deleting a frame needs confirm — feedback is an edit, not a rebuild
+r = await run([{ op: 'remove', nodeId: '1:20' }])
+check('remove: frame without confirm is refused', !r.ok && /without confirm:true/.test(r.error) && !frame.removed, r.error)
+
+r = await run([{ op: 'remove', nodeId: '1:20', confirm: true }])
+check('remove: frame with confirm is removed', r.ok && frame.removed, r.error)
 
 console.log(failures === 0 ? '\nall typography checks passed' : '\n' + failures + ' check(s) failed')
 process.exit(failures === 0 ? 0 : 1)

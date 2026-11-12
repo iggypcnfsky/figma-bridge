@@ -221,12 +221,17 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
 2. **Do not touch someone else's layers without consent.** `update`, `remove`, `reparent` on existing
    user content only on an explicit instruction. Create new things alongside, prefixed
    (`Bridge / …`), so they can be found and deleted.
-3. **A rework is a new artefact, close to the original.** When asked to redo a slide, screen or
-   section, duplicate the original, place the result **immediately beside it** — as close as the free
-   space allows, never overlapping it — and name it `Bridge / v2 — <original name>`. Get the spot from
-   `placeNear` (it scans the siblings and returns the first free side) instead of guessing
-   coordinates; when no side is free, ask the user. Edit the original in place **only** when the user
-   says to replace something on it.
+3. **Feedback is an edit, not a rebuild.** "This is wrong", "move X", "too small", "change the copy"
+   asks you to fix the smallest thing that is wrong, **in place**: re-read the node, change that
+   property (`update`, `text`, `align`, `sizing`), render, and leave every other layer, slide and id
+   alone. Do not delete and recreate the slide, do not re-flow the deck, and do not "start clean"
+   because a batch failed.
+   A **new version** is a different request: only when the user asks for one ("v2", "another option",
+   "redo the whole thing"), clone the original, place the copy immediately beside it with `placeNear`,
+   name it `Bridge / v2 — <name>`, and leave the original untouched.
+   Deleting frames, sections, pages, groups or components needs an explicit "delete/remove"
+   instruction — the `remove` op refuses structural nodes without `confirm:true`. If a batch failed
+   halfway, read what already exists and continue; never "clean up" by deleting partial work.
 4. **The draft's arrangement is intent, not noise.** When building on existing work, read how it is
    already grouped, ordered and placed — sibling order, proximity, alignment, group and frame names,
    what sits next to what — and keep that structure. A rough draft is still a decision trail. Move only

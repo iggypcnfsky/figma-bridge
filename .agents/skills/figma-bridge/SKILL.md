@@ -186,6 +186,22 @@ of elements, the spacing rhythm. Read it before designing, then keep it.
 Never normalise a draft silently. If consistency would require moving things the user placed, say so and
 ask; a tidy-looking slide that lost their groupings is a regression, not an improvement.
 
+## When something is wrong
+
+The user pointing at a defect is the most common message you get. It is an edit request — treat it as
+surgery, not a rewrite:
+
+1. **Re-read the node** (`node`, `selection`, `measure`) — do not trust what you remember building.
+2. **Name the one failing property**: size, position, colour, font, copy, spacing, missing element.
+3. **Change only that** with `update` / `text` / `align` / `sizing` / `effects`, scoped to the node or
+   the few nodes involved. Do not touch sibling slides.
+4. **Render** the frame and compare before/after; the complaint should be gone and the rest identical.
+5. **Report what changed and what stayed.** If the fix needs a structural change you cannot make in
+   place, ask — do not rebuild and delete.
+
+If you recreated something and the user says it is wrong, you already broke the rule once: patch the
+current version forward. Restoring "the old one" by rebuilding it again is a second rebuild.
+
 ## Rules
 
 - **Read before write.** Two calls minimum: inspect, then mutate.
@@ -198,12 +214,19 @@ ask; a tidy-looking slide that lost their groupings is a regression, not an impr
 - **Never write a client, project or file name into shared files** (skill, README, AGENTS, examples).
   They are project-agnostic: say "the deck", "the target file". Constraints belong in the local,
   gitignored `rules.json`.
-- **A rework goes right beside the original, as close as possible.** Asked to redo a
-  slide/screen/section: duplicate it, call
+- **Feedback is an edit, not a rebuild.** "Something is wrong", "move this", "too small", "change the
+  copy" means: re-read the node, change the one property that is wrong, render, done. Keep ids, names,
+  siblings, other slides, and everything you were not asked about. Never delete and recreate a slide
+  to fix a detail, never re-flow the deck because one frame is off, and never start over after a failed
+  batch — inspect what exists and continue. See "When something is wrong" below.
+- **A new version goes right beside the original.** Only when the user asks for one ("v2", "another
+  option", "redo it"): clone, then
   `{"op":"placeNear","nodeId":"<new id>","move":true,"gap":80,"name":"Bridge / v2 — <name>"}` so the
-  copy lands on the first free side instead of a guessed coordinate, and leave the original untouched.
-  If the tool reports `free: false`, ask where it should go. Replace elements in place only when the
-  user explicitly asks for that.
+  copy lands on the first free side instead of a guessed coordinate; leave the original untouched.
+  If the tool reports `free: false`, ask where it should go.
+- **Deletion needs an explicit ask.** `remove` refuses FRAME/SECTION/PAGE/COMPONENT/COMPONENT_SET
+  without `confirm:true`, because it destroys the children and the bridge cannot undo it. Pass
+  `confirm:true` only when the user said to delete that thing.
 - **`goto` changes the user's view** — only on request.
 - **`exec` is a last resort.** It works (Figma's sandbox allows `new Function`) and bypasses all
   parameter validation. Return JSON-serializable values only.
