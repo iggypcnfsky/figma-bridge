@@ -21,12 +21,14 @@ command works from any directory:
 
 ```bash
 figma doctor     # repo path, server state, connected Figma windows, img-forge + FAL key, QuiverAI key
-figma rules      # this project's constraints: type floor, grid, frame size, version naming
+figma rules      # constraints for the connected Figma file: type floor, grid, frame size
 ```
 
 `figma rules` is the difference between "make it look consistent" and actually matching the house
-style. Read it before any design work; if it returns `{}`, ask the user for the floor values instead of
-inventing them. Anything marked `"confirmed": false` is an assumption you must verify.
+style. Read it before any design work. The output merges `default` with a per-file entry matched by the
+connected window's name and reports it as `matchedFile`; if it returns `{}`, ask the user for the floor
+values instead of inventing or borrowing them. Anything marked `"confirmed": false` is an assumption
+you must verify.
 
 If `figma` is missing, the absolute path is printed by the skill or recoverable with
 `figma where`; as a last resort the repo lives next to this workspace checkout. Only then fall back to
@@ -138,9 +140,9 @@ instead of guessing.
 
 ```bash
 ./bin/figma clients                       # id, file, page, uptime
-./bin/figma --file ITHAKA ping            # target by file name
+./bin/figma --file "Deck" ping            # target by file name
 ./bin/figma --client c1a2b3 ping          # target by client id
-FIGMA_BRIDGE_FILE=ITHAKA ./bin/figma run '[…]'
+FIGMA_BRIDGE_FILE="Deck" ./bin/figma run '[…]'
 ```
 
 - one connected window → it is used automatically;
@@ -239,6 +241,12 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
    parameter validation. Use it when an operation is missing; the result must be JSON-serializable.
 8. **Do not guess pages.** `goto` changes the user's view — only on request.
 9. **Leave no litter.** After testing, remove what you created.
+10. **Keep tracked files project-agnostic.** Skills, README, AGENTS and examples are shared: no
+   client, project or file names in them ("the deck", "the target file", not a real name). This
+   project's constraints live in `rules.json`, which is gitignored: `default` is the house style
+   used for every Figma file, `files` holds optional per-file overrides matched by the connected
+   window's name. `figma rules` merges them and adds `matchedFile`. `{}` means ask the user for the
+   floor values — never borrow another file's rules or invent them.
 
 ## Pitfalls (verified in practice)
 

@@ -19,12 +19,15 @@ executed inside Figma by a plugin, through the Figma Plugin API. No OAuth, no to
 figma doctor        # repo, server, connected windows, img-forge + FAL key in one shot
 figma clients       # id, file, page of every connected Figma window
 figma agents        # who is working on this canvas right now (names, runs, busy/idle)
-figma rules         # project constraints: type floor, grid, frame size, version naming
+figma rules         # this file's constraints: type floor, grid, frame size, version naming
 ```
 
 **Read `figma rules` before designing.** It carries the non-obvious limits — e.g. "Poppins 20/25 is the
-floor" — that no amount of reading the canvas will tell you. Treat `"confirmed": false` as an
-assumption to verify with the user, and `{}` as "ask, do not invent".
+floor" — that no amount of reading the canvas will tell you. Rules live in a gitignored `rules.json`:
+`default` is the house style for every file, `files` holds per-file overrides matched by the connected
+window's name, and `matchedFile` in the output says which one applied. Treat `"confirmed": false` as
+an assumption to verify with the user, and `{}` as "ask, do not invent" — never import another
+project's constraints.
 
 If the server is down, start it with `figma serve` (detached, survives the terminal). Only if `figma`
 itself is missing, fall back to `node "$(figma where)/server.mjs"` — do not `find` the repo, and do not
@@ -192,6 +195,9 @@ ask; a tidy-looking slide that lost their groupings is a regression, not an impr
   re-flow a draft to look tidier unless asked; ask first when consistency would move their elements.
 - **Never touch existing user layers** (`update`, `remove`, `reparent`) without explicit instruction.
   Prefix your own creations: `Bridge / …`.
+- **Never write a client, project or file name into shared files** (skill, README, AGENTS, examples).
+  They are project-agnostic: say "the deck", "the target file". Constraints belong in the local,
+  gitignored `rules.json`.
 - **A rework goes right beside the original, as close as possible.** Asked to redo a
   slide/screen/section: duplicate it, call
   `{"op":"placeNear","nodeId":"<new id>","move":true,"gap":80,"name":"Bridge / v2 — <name>"}` so the

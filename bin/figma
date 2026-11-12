@@ -108,12 +108,60 @@ else:
     ;;
 
   rules)
-    if [ -f "$REPO/rules.json" ]; then
-      cat "$REPO/rules.json"
-    else
+    # Wymagania stylu są per plik Figmy i trzymane lokalnie (rules.json jest w .gitignore).
+    # Kształt: { "default": {...}, "files": { "<nazwa pliku>": {...} } } — dopasowanie po nazwie
+    # podłączonego okna (albo --file). Brak wpisu = "{}" + podpowiedź, żeby agent zapytał,
+    # a nie stosował stylu innego projektu.
+    RULES_FILE="${FIGMA_RULES_FILE:-$REPO/rules.json}"
+    if [ ! -f "$RULES_FILE" ]; then
       echo '{}'
-      echo "no rules.json in $REPO — copy rules.example.json and fill in this project's constraints" >&2
+      echo "no rules.json — copy rules.example.json and fill in this project's constraints" >&2
+      exit 0
     fi
+    python3 - "$RULES_FILE" "$BASE" "$TARGET_FILE" <<'PY_RULES'
+import json, sys, urllib.request
+
+path, base, target = sys.argv[1], sys.argv[2], sys.argv[3]
+data = json.load(open(path))
+
+def merge(a, b):
+    out = dict(a)
+    for key, value in b.items():
+        out[key] = merge(out[key], value) if isinstance(out.get(key), dict) and isinstance(value, dict) else value
+    return out
+
+# stary, płaski format: jeden zestaw reguł, bez dopasowania
+if "files" not in data and "default" not in data:
+    print(json.dumps(data, indent=2, ensure_ascii=False))
+    sys.exit(0)
+
+files = data.get("files") or {}
+default = data.get("default") or {}
+connected = []
+if target:
+    connected = [target]
+else:
+    try:
+        status = json.load(urllib.request.urlopen(base + "/status", timeout=2))
+        connected = [c.get("file") for c in (status.get("clients") or []) if c.get("file")]
+    except Exception:
+        pass
+
+match = next((name for name in connected if name in files), None)
+if match:
+    merged = merge(default, files[match])
+    merged["matchedFile"] = match
+    print(json.dumps(merged, indent=2, ensure_ascii=False))
+elif files and not default:
+    name = connected[0] if connected else "this Figma file"
+    sys.stderr.write("no rules for " + name + " — ask the user for the floor values; do not reuse another file's style\n")
+    print("{}")
+else:
+    merged = dict(default)
+    if connected:
+        merged["matchedFile"] = None
+    print(json.dumps(merged, indent=2, ensure_ascii=False))
+PY_RULES
     ;;
 
   where)

@@ -98,13 +98,31 @@ figma serve
 
 ## Usage
 
-`figma` is on `PATH` (a symlink to `bin/figma`), so these work from any directory:
+### House rules
+
+`figma rules` is how an agent learns the non-obvious constraints — type floor, grid, version naming —
+without inspecting the whole canvas. They live in `rules.json` next to the repo (gitignored), so the
+shared code stays project-agnostic:
+
+```json
+{
+  "default": { "typography": { "family": "Inter", "minFontSize": 16 } },
+  "files": { "Some Figma File": { "grid": { "module": 60 } } }
+}
+```
+
+`default` applies to every file; `files[<name>]` overrides it for one Figma file and is matched against
+the connected window (or `--file`). The output carries `matchedFile`. An empty result (`{}`) means the
+file has no rules — ask the user rather than copying another project's style.
+
+`figma` is on `PATH` (a symlink to `bin/figma`), so these work from any directory. Examples use
+`"Deck"` as a stand-in for a Figma file name — this repo carries no project or client names.
 
 ```bash
 figma doctor                               # repo, server, windows, img-forge in one call
 figma rules                                # project constraints: type floor, grid, version naming
 figma clients                              # which Figma windows are connected
-./bin/figma --file ITHAKA selection 2      # target one file when several are open
+./bin/figma --file "Deck" selection 2      # target one file when several are open
 ./bin/figma selection 2
 ./bin/figma op '{"op":"createFrame","name":"Card","width":320,"height":200,"fill":"#0B0B0F","props":{"cornerRadius":16,"layoutMode":"VERTICAL","paddingTop":24,"itemSpacing":12}}'
 ./bin/figma run '[

@@ -1,12 +1,24 @@
 {
-  "file": "ITHAKA",
-  "typography": {
-    "family": "Poppins",
-    "minFontSize": 20,
-    "minLineHeight": 25,
-    "note": "Poppins Regular 20 / 25 is the floor — never go smaller in this deck"
+  "default": {
+    "typography": {
+      "family": "Inter",
+      "minFontSize": 16,
+      "minLineHeight": 22,
+      "note": "the floor for body copy — never go smaller"
+    },
+    "grid": {
+      "module": 40,
+      "layoutGrid": "GRID 40, 40% opacity",
+      "confirmed": false
+    },
+    "frames": {
+      "width": 1920,
+      "height": 1080
+    },
+    "versions": {
+      "nameTemplate": "Bridge / v2 — {name}",
+      "gap": 80
+    }
   },
-  "grid": { "columns": 12, "gutter": 24, "margin": 64 },
-  "frames": { "width": 1920, "height": 1080 },
-  "versions": { "nameTemplate": "Bridge / v2 — {name}", "gap": 80 }
+  "files": {}
 }
