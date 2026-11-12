@@ -250,6 +250,8 @@ current version forward. Restoring "the old one" by rebuilding it again is a sec
 - `figma run` / `figma op` exit 1 and print the failure on stderr. A failed op has no `value` in its
   result — check `ok` before `results[0].value`, and never assume a key exists: `undefined` is dropped
   from JSON, so Python needs `.get()` and scripts should emit explicit `null`s.
+- `figma.getNodeById` sync throws under dynamic-page — inside `exec` use `await figma.getNodeByIdAsync(id)`
+  or `$.node(id)`. The bridge ops already do this; only your own scripts hit it.
 - Never index a field the reference does not list. `summary` carries `font`, `fontSize`, `lineHeight`
   and `letterSpacing` for TEXT; everything else comes from `exec` with the real API name. Mixed styles
   are the string `"MIXED"`, so guard with `.get()` and fallbacks.

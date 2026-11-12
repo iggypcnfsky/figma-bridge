@@ -555,6 +555,9 @@ dead end, it is a hint.
 
 Two scripting traps that bite every agent once:
 
+- **`figma.getNodeById` is synchronous.** Under `documentAccess: "dynamic-page"` it throws
+  `Cannot call with documentAccess: dynamic-page`; use `await figma.getNodeByIdAsync(id)` or
+  `$.node(id)`. The bridge translates that message into this advice.
 - **`figma.mixed` is a symbol.** On a TEXT node, `fills`, `strokes`, `fontSize` or `fontName` can be
   `figma.mixed` instead of a value — `node.fills.map(...)` then throws `not a function`. Guard with
   `Array.isArray(node.fills)` or use `$.paints(node)`. Text ranges stay available via

@@ -1515,14 +1515,33 @@ async function resolveStyle(kind, style) {
 // Figma mówi "Use node.setTextStyleIdAsync instead", ale nie mówi, którą operację mostka
 // wybrać. Dopisujemy naszą drogę, żeby agent nie powtarzał tego samego błędu.
 const DYNAMIC_PAGE_STYLE = /Cannot call with documentAccess|documentAccess: dynamic-page/i
+const SYNC_GET_NODE = /getNodeById(?!Async)[\s\S]*documentAccess|documentAccess[\s\S]*getNodeByIdAsync instead/i
 
 function explainError(message) {
-  if (!DYNAMIC_PAGE_STYLE.test(message)) return message
-  return (
-    message +
-    ' — in dynamic-page mode style ids are asynchronous: use the `text` op with `textStyle`,'
-    + ' `applyStyle` with `kind`, or inside exec `await $.setTextStyle(node, await $.textStyle("Name"))`.'
-  )
+  // `documentAccess` łapie wszystko: styl ID, ale też `figma.getNodeById`. Każdy przypadek
+  // potrzebuje innej rady — wcześniej getNodeById dostawał poradę o stylach i to myliło.
+  if (SYNC_GET_NODE.test(message)) {
+    return message + ' — use `await figma.getNodeByIdAsync(id)` or `$.node(id)` in exec; the bridge operations already do this.'
+  }
+  if (DYNAMIC_PAGE_STYLE.test(message)) {
+    return (
+      message +
+      ' — in dynamic-page mode style ids are asynchronous: use the `text` op with `textStyle`,'
+      + ' `applyStyle` with `kind`, or inside exec `await $.setTextStyle(node, await $.textStyle("Name"))`.'
+    )
+  }
+  return message
+}
+
+// Toast w Figmie ma ~120 znaków, więc nie wrzucamy do niego całego błędu z doklejoną radą
+// (wychodziło „— in dy”). Krótka, konkretna przyczyna; pełny tekst i tak wraca w /result.
+function failureSummary(error) {
+  const text = String(error || '')
+  if (/getNodeById(?!Async)/.test(text)) return 'use await figma.getNodeByIdAsync(id) or $.node(id)'
+  if (/textStyleId|fillStyleId|effectStyleId|gridStyleId/.test(text)) {
+    return 'style ids are async — use `text` with textStyle, or applyStyle'
+  }
+  return text.replace(/^op #\d+ \([^)]*\): /, '').slice(0, 140)
 }
 
 // ------------------------------------------------------------ dynamic-page retry
@@ -1710,7 +1729,7 @@ async function runBatch(msg) {
 
   figma.ui.postMessage({ type: 'result', id: msg.id, ok, results, error })
   // Pełny błąd i tak wraca do agenta; w Figmie pokazujemy skrót, żeby toast nie zasłaniał płótna.
-  if (!ok) figma.notify('Figma Bridge: ' + String(error).slice(0, 120), { error: true })
+  if (!ok) figma.notify('Figma Bridge: ' + failureSummary(error), { error: true })
 }
 
 figma.notify('Figma Bridge ready')

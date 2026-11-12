@@ -275,6 +275,9 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
   `fontName` can be `figma.mixed` when ranges differ; `node.fills.map(...)` then dies with
   `not a function`. Guard with `Array.isArray(...)`, use `$.paints(node)` in `exec`, or read
   `node.getRangeFills(...)` for the ranges.
+- **`figma.getNodeById` is synchronous and throws under `dynamic-page`.** Use
+  `await figma.getNodeByIdAsync(id)` or `$.node(id)` in `exec`. The bridge's own `node`/`selection`/`find`
+  already use the async variant, so only hand-written `exec` scripts hit this.
 - **A failed op has no `value`.** `results[i]` is `{ ok: false, error }` — indexing `.value` gives
   `KeyError`/`undefined` and hides the real message. Check `ok` first. `figma op` and `figma run` now
   exit **1** and print the error on stderr, which stops a shell pipeline before that happens.

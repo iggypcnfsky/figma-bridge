@@ -68,18 +68,23 @@ const frame = {
 const nodes = new Map([[title.id, title], [mixedText.id, mixedText], [frame.id, frame]])
 
 const page = { id: '0:1', name: 'Slides', type: 'PAGE', children: [], selection: [] }
+const notifications = []
 
 const figma = {
   mixed,
   showUI() {},
   ui: { postMessage() {}, resize() {}, onmessage: null },
   on() {},
-  notify() {},
+  notify(message) { notifications.push(String(message)) },
   root: { name: 'Harness', children: [page] },
   currentPage: page,
   fileKey: 'harness',
   editorType: 'figma',
   getNodeByIdAsync: async (id) => nodes.get(id) || null,
+  // synchroniczna wersja wywala się dokładnie jak w Figmie pod dynamic-page
+  getNodeById() {
+    throw new Error('in getNodeById: Cannot call with documentAccess: dynamic-page. Use figma.getNodeByIdAsync instead.')
+  },
   loadFontAsync: async (font) => font,
   loadAllPagesAsync: async () => {},
   commitUndo() {},
@@ -159,6 +164,13 @@ check('exec: dynamic-page error gets bridge advice', !r.ok && /use the `text` op
 // 10. a missing style fails with the list hint
 r = await run([{ op: 'text', nodeId: '1:10', textStyle: 'nope' }])
 check('text: unknown style names the fix', !r.ok && /style not found: nope/.test(r.error), r.error)
+
+// 10b. getNodeById (sync) must get the async advice, not the style one
+r = await run([{ op: 'exec', code: "return figma.getNodeById('1:10').name" }])
+check('exec: getNodeById points at getNodeByIdAsync/$ .node',
+  !r.ok && /getNodeByIdAsync|\$\.node\(id\)/.test(r.error) && !/style ids are asynchronous/.test(r.error), r.error)
+check('toast shows the short fix, not a truncated sentence',
+  notifications.some((m) => /getNodeByIdAsync|\$\.node\(id\)/.test(m)) && !notifications.some((m) => /— in dy$/.test(m)), notifications.slice(-2))
 
 // 11. deleting a frame needs confirm — feedback is an edit, not a rebuild
 r = await run([{ op: 'remove', nodeId: '1:20' }])
