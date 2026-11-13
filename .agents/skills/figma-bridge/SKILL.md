@@ -120,6 +120,15 @@ Design-work shortcuts worth knowing:
   non-auto-layout children (`STRETCH`/`MIN`/`MAX`/`CENTER`/`SCALE`). Read both from `node` before
   changing them — `sizing` returns `skipped` with Figma's reason when a property does not apply.
 
+### If you are an MCP client, not a shell
+
+Some agents reach the bridge through MCP instead of a shell: `mcp.mjs` in the repo root exposes
+`figma_status`, `figma_clients`, `figma_agents`, `figma_rules`, `figma_selection`, `figma_pages`,
+`figma_variables`, `figma_run`, `figma_export`, `figma_place_image`, `figma_serve`, `img_models`,
+`img_generate`, `img_edit`. They spawn this same CLI, so ids, errors and rules behave identically —
+use them in place of the commands below. Anything not covered (vectors via `figma svg`, batch
+`--file` targeting) still needs a shell.
+
 ## Images
 
 Need artwork? Generate it with the sibling `img-forge` CLI

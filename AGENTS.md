@@ -59,6 +59,19 @@ starting the server yourself.
 
 `FIGMA_BRIDGE_URL` overrides the address (default `http://127.0.0.1:3847`).
 
+### Other MCP clients (opencode, Claude Code, Codex)
+
+`mcp.mjs` is a stdio MCP server that wraps this CLI — same `bin/figma`, same `rules.json`, same
+agent identity, so an MCP client cannot behave differently from a shell agent. Register it under the
+client's `mcp` config as `command: ["node", "<repo>/mcp.mjs"]`; set `FIGMA_AGENT` in its environment
+so the panel shows who is on the canvas. Tools: `figma_status`, `figma_clients`, `figma_agents`,
+`figma_rules`, `figma_selection`, `figma_pages`, `figma_variables`, `figma_run`, `figma_export`,
+`figma_place_image`, `figma_serve`, `img_models`, `img_generate`, `img_edit`.
+
+Vectors (`figma svg …`), job management and batch targeting stay CLI-only — the tool count is
+deliberately small so a 20-tool context does not cost more than the work.
+
+
 ## HTTP contract
 
 `POST /run`
@@ -305,6 +318,7 @@ figma-bridge/
   AGENTS.md            ← this file
   README.md            ← human-facing version
   server.mjs           ← queue + long-poll (no dependencies, Node ≥ 20)
+  mcp.mjs              ← the same bridge as MCP tools (stdio), for opencode/Claude Code
   bin/figma            ← CLI
   plugin/manifest.json ← Figma manifest
   plugin/code.js       ← operations on the Figma Plugin API

@@ -138,6 +138,55 @@ Full parameter reference: [`docs/ops-reference.md`](docs/ops-reference.md).
 Every frame of the demo GIF above is a real export from Figma after one operation —
 reproduce it with `scripts/demo-build.sh` and `scripts/make-demo-gif.py`.
 
+## Use from another agent (opencode, Claude Code, Codex, anything)
+
+Two interfaces, one implementation — both spawn the same `bin/figma`, so behaviour cannot drift.
+
+**1. CLI (works for any agent that can run a shell).** `figma` is a symlink on `PATH`; nothing else
+to install. The agent needs the skill or `AGENTS.md` so it knows the preconditions — a bare
+`figma status` will not tell it that `pluginConnected: false` means "ask the human to open the plugin".
+
+**2. MCP server (stdio).** `mcp.mjs` exposes the same bridge as MCP tools:
+
+```bash
+node /path/to/figma-bridge/mcp.mjs     # speaks JSON-RPC on stdin/stdout
+```
+
+opencode — `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "mcp": {
+    "figma-bridge": {
+      "type": "local",
+      "command": ["node", "/Users/you/figma-bridge/mcp.mjs"],
+      "environment": { "FIGMA_AGENT": "opencode" },
+      "enabled": true
+    }
+  }
+}
+```
+
+Claude Code: `claude mcp add figma-bridge -- node /Users/you/figma-bridge/mcp.mjs`.
+Any other client: command `node`, argument the absolute path — no environment variables required.
+
+Tools: `figma_status`, `figma_clients`, `figma_agents`, `figma_rules`, `figma_selection`,
+`figma_pages`, `figma_variables`, `figma_run` (any operation), `figma_export`, `figma_place_image`,
+`figma_serve`, plus `img_models`, `img_generate`, `img_edit` from the sibling `img-forge`.
+The server also sends `instructions`, so a client that surfaces them gets the "read `figma rules`
+first, never rebuild on feedback" rules for free.
+
+Heavy or rarely used paths stay in the CLI on purpose — vectors (`figma svg gen|trace`), job
+management and the batch `--file` targeting. Reach them with a shell from inside the agent.
+
+**Skills.** `.agents/skills/figma-bridge/SKILL.md` is the operating manual. DSH loads it from the
+repo; opencode reads `~/.opencode/skills` (or any `skills.paths` entry) — link it once:
+
+```bash
+ln -s "$PWD/.agents/skills/figma-bridge" ~/.opencode/skills/figma-bridge
+ln -s "$PWD/../img-forge/.agents/skills/img-forge" ~/.opencode/skills/img-forge
+```
+
 ## Image generation
 
 The plugin window doubles as an image panel. It never sees the API key: it posts a job to the local
