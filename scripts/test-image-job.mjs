@@ -98,6 +98,33 @@ try {
   check('the mask reaches the payload', /<upload mask\.png>/.test(payload.mask_url || ''), payload.mask_url)
   check('nothing was charged', Boolean(job.result && job.result.dryRun), job.result && job.result.cost)
 
+  // a banner-shaped selection (8.7:1) must be clamped to the model's 3:1 limit before the call
+  const wide = await (await fetch(`${BASE}/image/jobs`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      mode: 'edit',
+      prompt: 'wide banner',
+      model: 'openai/gpt-image-2.6/sunburst/edit',
+      size: '2698x310',
+      refs: [{ filename: 'wide.png', base64: png(8, 8, [10, 20, 30]).toString('base64') }],
+      dryRun: true,
+      confirmCost: true,
+    }),
+  })).json()
+  let wideJob = wide
+  const wideDeadline = Date.now() + 20000
+  while (wideJob.status !== 'done' && wideJob.status !== 'failed' && Date.now() < wideDeadline) {
+    await sleep(300)
+    wideJob = await (await fetch(`${BASE}/image/jobs/${wide.id}`)).json()
+  }
+  check('an over-wide size still runs', wideJob.status === 'done', wideJob.status + ' — ' + (wideJob.error || ''))
+  const wideSize = ((wideJob.result || {}).payload || {}).image_size || {}
+  check('it is clamped to 3:1', wideSize.width === 2698 && wideSize.height === 900, wideSize)
+  check('the clamp is logged', (wideJob.log || []).some((line) => /caps at 3:1/.test(line)), wideJob.log)
+  const wideDir = join(repo, 'out', 'jobs', wide.id)
+  if (existsSync(wideDir)) rmSync(wideDir, { recursive: true, force: true })
+
   // a mask that does not match the first reference must be rejected before fal sees it
   const mismatch = await fetch(`${BASE}/image/jobs`, {
     method: 'POST',

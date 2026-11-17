@@ -114,6 +114,9 @@ Image generation (optional; needs a `FAL_KEY` and the sibling CLI,
   "reference image N (filename)" — the model needs words, the API only keeps order).
   Colours are a message to the model, never part of the mask: fal reads only white (change) and
   black (keep).
+- the panel derives `size` from the selected frame; models accept at most 3:1, so a wider (or
+  taller) selection is clamped to the nearest legal edge and the job log says so — `img-forge` itself
+  refuses such a size up front, which is why a direct CLI call with 8:1 fails before any charge
 - no token; requests carrying a foreign `Origin` get 403, and each job is capped by `--max-usd`
 - a job spawns `img-forge` and returns `{status, log, result:{file, base64, width, height}}`
 - image jobs run in parallel: `IMAGE_CONCURRENCY` (default 3, max 8) `img-forge` processes; `/status`

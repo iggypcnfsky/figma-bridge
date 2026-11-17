@@ -465,6 +465,35 @@ function startImageJob(job) {
 }
 
 /** Validates a job request, stores reference images on disk and queues the CLI run. */
+/**
+ * The panel derives the output size from the selected frame, so a wide banner (8.7:1) asks the model
+ * for an aspect it refuses — fal answers 422 only after the job ran. Clamp to 3:1 here, keep the long
+ * edge, and say so in the job log instead of failing a paid round-trip.
+ */
+function clampImageSize(size) {
+  const match = /^(\d+)x(\d+)$/.exec(String(size || ''))
+  if (!match) return { size, note: null }
+  const width = Number(match[1])
+  const height = Number(match[2])
+  if (!width || !height) return { size, note: null }
+  const ratio = width / height
+  if (ratio > 3) {
+    const clamped = Math.max(16, Math.ceil(width / 3))
+    return {
+      size: `${width}x${clamped}`,
+      note: `size ${width}×${height} is ${ratio.toFixed(2)}:1 — the model caps at 3:1, generating ${width}×${clamped}`,
+    }
+  }
+  if (ratio < 1 / 3) {
+    const clamped = Math.max(16, Math.ceil(height / 3))
+    return {
+      size: `${clamped}x${height}`,
+      note: `size ${width}×${height} is ${ratio.toFixed(2)}:1 — the model caps at 3:1, generating ${clamped}×${height}`,
+    }
+  }
+  return { size: `${width}x${height}`, note: null }
+}
+
 function enqueueImageJob(body) {
   const mode = body.mode === 'edit' ? 'edit' : 'gen'
   if (!body.prompt || String(body.prompt).trim() === '') throw new Error('prompt is required')
@@ -503,8 +532,12 @@ function enqueueImageJob(body) {
     }
   }
 
-  const args = imageArgs(Object.assign({}, body, maskPath ? { mask: maskPath } : {}), refPaths)
-  const job = { id, dir, body, args, status: 'queued', log: [], createdAt: Date.now(), result: null, error: null }
+  const sized = clampImageSize(body.size)
+  const args = imageArgs(
+    Object.assign({}, body, { size: sized.size }, maskPath ? { mask: maskPath } : {}),
+    refPaths,
+  )
+  const job = { id, dir, body, args, status: 'queued', log: sized.note ? [sized.note] : [], createdAt: Date.now(), result: null, error: null }
   imageJobs.set(id, job)
   imageQueue.push(job)
   pumpImageQueue()

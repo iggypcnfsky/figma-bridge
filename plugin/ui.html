@@ -1027,10 +1027,25 @@
         return { width, height }
       }
 
+      // Modele przycinają proporcje do 3:1. Panel mówi o tym PRZED wysłaniem zlecenia, bo fal
+      // odrzuca np. 8.7:1 (szeroki banner) dopiero po wykonaniu płatnej pracy.
+      function aspectNote(defaultText) {
+        const size = currentSize()
+        if (!size.width || !size.height) return defaultText
+        const ratio = size.width / size.height
+        if (ratio <= 3 && ratio >= 1 / 3) return defaultText
+        const clamped =
+          ratio > 3
+            ? size.width + '×' + Math.max(16, Math.round(size.width / 3))
+            : Math.max(16, Math.round(size.height / 3)) + '×' + size.height
+        return size.width + '×' + size.height + ' is ' + ratio.toFixed(1) + ':1 — the model caps at 3:1, so it will run at ' + clamped
+      }
+
       function setSize(width, height) {
         state.custom = { width: Math.round(width), height: Math.round(height) }
         $('sizeW').value = state.custom.width
         $('sizeH').value = state.custom.height
+        $('sizeHint').textContent = aspectNote('W×H, or Use selection to match the frame')
         updateCost()
       }
 
@@ -2035,7 +2050,7 @@
 
       $('sizeW').oninput = $('sizeH').oninput = () => {
         const size = currentSize()
-        $('sizeHint').textContent = 'manual · ' + size.width + '×' + size.height
+        $('sizeHint').textContent = aspectNote('manual · ' + size.width + '×' + size.height)
       }
 
       $('sizeW').value = state.custom.width
