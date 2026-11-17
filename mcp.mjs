@@ -203,12 +203,18 @@ function flags(a) {
 
 // ------------------------------------------------------------------ process calls
 
+const isNodeScript = (bin) => /\.(mjs|cjs|js)$/.test(bin) || bin === IMG_BIN
+
 function call(bin, args, timeout = 120_000) {
   if (!existsSync(bin)) {
     return Promise.resolve({ ok: false, text: `${bin} not found — set FIGMA_BIN/IMG_BIN or install the repo there` })
   }
+  // `img` starts with `#!/usr/bin/env node`, and a client started from launchd/DSH may have no node
+  // on PATH — run node scripts with this process's own node instead of trusting the shebang.
+  const [file, argv] = isNodeScript(bin) ? [process.execPath, [bin, ...args]] : [bin, args]
+  const env = { ...process.env, PATH: [dirname(process.execPath), process.env.PATH].filter(Boolean).join(':') }
   return new Promise((done) => {
-    execFile(bin, args, { timeout, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(file, argv, { timeout, maxBuffer: 32 * 1024 * 1024, env }, (err, stdout, stderr) => {
       if (err && err.code === 'ENOENT') {
         done({ ok: false, text: `${bin} is not executable` })
         return

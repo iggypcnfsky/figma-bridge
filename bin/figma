@@ -36,6 +36,18 @@ while [ $# -gt 0 ]; do
 done
 set -- ${ARGS[@]+"${ARGS[@]}"}
 
+# node bywa poza PATH (launchd, plugin DSH, Figma), a wtedy shebang `#!/usr/bin/env node`
+# wywala całe zlecenie. Znajdź go raz, bezwzględną ścieżką, i używaj wszędzie poniżej.
+NODE_BIN="${FIGMA_NODE:-$(command -v node 2>/dev/null || true)}"
+if [ -z "$NODE_BIN" ]; then
+  # `ls` zwraca 2, gdy część ścieżek nie istnieje, a pipefail robi z tego błąd całego skryptu.
+  NODE_BIN=$(ls -d "$HOME"/.nvm/versions/node/*/bin/node /opt/homebrew/bin/node /usr/local/bin/node 2>/dev/null | sort -V | tail -1 || true)
+fi
+if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; then
+  echo "figma: no node found — set FIGMA_NODE=/path/to/node" >&2
+  exit 1
+fi
+
 CMD="${1:-status}"
 shift || true
 
@@ -176,7 +188,7 @@ PY_RULES
       exit 0
     fi
     cd "$REPO"
-    nohup node server.mjs >> /tmp/figma-bridge.log 2>&1 &
+    nohup "$NODE_BIN" server.mjs >> /tmp/figma-bridge.log 2>&1 &
     echo $! > /tmp/figma-bridge.pid
     sleep 1.5
     if curl -sf -m 2 "$BASE/status" > /dev/null; then
@@ -298,7 +310,7 @@ PY2
     [ -n "$AGENT_LABEL" ] && SVG_ARGS+=(--label "$AGENT_LABEL")
     [ -n "$TARGET_FILE" ] && SVG_ARGS+=(--file "$TARGET_FILE")
     [ -n "$TARGET_CLIENT" ] && SVG_ARGS+=(--client "$TARGET_CLIENT")
-    exec node "$REPO/scripts/svg-cli.mjs" "${SVG_ARGS[@]}" "$@"
+    exec "$NODE_BIN" "$REPO/scripts/svg-cli.mjs" "${SVG_ARGS[@]}" "$@"
     ;;
 
   export)

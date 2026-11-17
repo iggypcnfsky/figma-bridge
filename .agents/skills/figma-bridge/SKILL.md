@@ -243,6 +243,10 @@ current version forward. Restoring "the old one" by rebuilding it again is a sec
 
 ## Pitfalls
 
+- **`env: node: No such file or directory`** from the panel or `img` means node is not on the PATH of
+  the process that spawned the job (launchd, DSH plugin, Figma). The bridge now runs node scripts with
+  its own interpreter, so this is a symptom of an old server process — `figma serve` restarts it.
+
 - Use `localhost`, never `127.0.0.1`: the plugin manifest allowlists only `http://localhost:3847`
   (`devAllowedDomains`); Figma rejects IPs. Server listens on both `127.0.0.1` and `::1`.
 - `figma.currentPage` is the page open in that Figma window — not a saved pointer. Switching tabs

@@ -72,7 +72,15 @@ const imageJobs = new Map()
 /** Runs the img-forge CLI and resolves with its --json payload. */
 function runImgForge(args, onLog) {
   return new Promise((resolve, reject) => {
-    const child = spawn(IMG_FORGE_BIN, args, { cwd: dirname(IMG_FORGE_BIN) })
+    // Nie polegamy na shebang `#!/usr/bin/env node`: serwer bywa startowany z PATH, w którym nie ma
+    // node (launchd, plugin DSH, Figma), a wtedy każde zlecenie i lista modeli kończą się
+    // `env: node: No such file or directory`. Uruchamiamy skrypt tym samym node, który odpalił serwer,
+    // i dokładamy jego katalog na początek PATH dla procesów potomnych.
+    const env = {
+      ...process.env,
+      PATH: [dirname(process.execPath), process.env.PATH].filter(Boolean).join(':'),
+    }
+    const child = spawn(process.execPath, [IMG_FORGE_BIN, ...args], { cwd: dirname(IMG_FORGE_BIN), env })
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (chunk) => { stdout += chunk })

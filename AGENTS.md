@@ -302,6 +302,11 @@ Full parameters and return shapes: [`docs/ops-reference.md`](docs/ops-reference.
   else (effects, constraints, component properties) needs `exec` with the real Plugin API name.
 - **Positions are relative to the parent.** A node without `parentId` lands on the **current page**,
   and `x`/`y` are in the parent's coordinate space.
+- **`env: node: No such file or directory`.** A process spawned from launchd, the DSH plugin or
+  Figma gets a PATH without nvm's node, so anything relying on `#!/usr/bin/env node` dies. The server
+  now runs `img-forge` with its own `process.execPath`, `bin/figma` resolves node once, and
+  `~/.local/bin/node` is a shim for plain shells. If it reappears, `figma doctor` still works — it is
+  curl + python only.
 - **`export` caps at 8 MB** — lower `scale` instead of retrying.
 - **`figma.currentPage` is the page open in the Figma window**, not a "last used" pointer.
 - **`documentAccess: "dynamic-page"`** — reading children of a page other than the current one
